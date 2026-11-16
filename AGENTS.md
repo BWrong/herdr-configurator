@@ -24,3 +24,8 @@ Commands, `mod.json` fields, the drawing API, layout shape, and the GitHub rate 
 
 `npm test` (pure half, runs anywhere) and `npm run check` (`herdr-app check`, needs the macOS
 app). CI runs `npm test` only.
+
+### Review
+
+`CODING_STANDARDS.md` holds the judgement calls a check cannot enforce — read it before
+reviewing a change, not while writing one.

@@ -8,8 +8,11 @@ for the questions that come up in this repo.
 
 - `~/.config/herdr-app/` — the app's home. `mods/<name>/`, `layouts/*.json`, `keys.json`,
   `settings.json`, `installed.json`, `data/<mod>/`, `shared.json`, `themes/`.
-- `HERDR_APP_HOME` picks another home (`herdr-app --help`). Untested here; if it works, it is
-  how to shoot and verify without disturbing the person's window.
+- `HERDR_APP_HOME` picks another home (`herdr-app --help`). The socket is per home —
+  `HERDR_APP_HOME=/tmp/hh herdr-app status` answers `no Herdr window at /tmp/hh/herdr-app.sock`
+  rather than reaching the running window — so a second home is a separate instance, launched
+  with `HERDR_APP_HOME=/tmp/hh herdr-app`. Not tried end to end; it is the way to shoot and
+  verify without touching the person's window.
 - `installed.json` lists only Herdr's own shipped files (name → file → hash). Third-party
   entries have no provenance anywhere: that is why this mod keeps its ledger.
 
