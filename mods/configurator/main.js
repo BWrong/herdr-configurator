@@ -48,6 +48,7 @@ import {
   checkStateOf,
   withCheckResults,
   galleryRowsOf,
+  galleryFiltered,
   galleryPagePlan,
   galleryCacheOf,
   galleryCacheText,
@@ -114,6 +115,7 @@ export default class Configurator extends View {
     this.loaded = false;
     this.tab = "installed";
     this.gallery = { fetchedAt: null, rows: [] };
+    this.galleryText = "";
     this.galleryRaw = null;
     this.galleryError = null;
     this.refreshing = false;
@@ -140,6 +142,11 @@ export default class Configurator extends View {
         cx.notify();
       });
       this.input.focus();
+      this.galleryInput = InputState.new({ placeholder: "Search repositories\u2026" });
+      this.galleryInput.on("change", (_e, cx) => {
+        this.galleryText = this.galleryInput.value();
+        cx.notify();
+      });
       this.sourceRepo = InputState.new({ placeholder: "owner/repo or a GitHub URL" });
       this.sourceRef = InputState.new({ placeholder: "main" });
       this.handle = cx.focus_handle();
@@ -746,21 +753,9 @@ export default class Configurator extends View {
   keysTrigger(t, detail) {
     if (!detail.keysAvailable) return div();
     const content = this.keyPanel === detail.name;
-    const trigger = div()
-      .id(`configurator-keys-${detail.name}`)
-      .flex_none()
-      .px(10)
-      .py(3)
-      .rounded(6)
-      .border_1()
-      .border_color(t.border)
-      .bg(t.background)
-      .text_size(12)
-      .text_color(t.foreground)
-      .cursor_pointer()
-      .hover((s) => s.bg(t.hover))
-      .on_click((_e, cx) => this.openKeys(detail, cx))
-      .child("Key bindings");
+    const trigger = this.button(t, `configurator-keys-${detail.name}`, "Key bindings", {
+      on_click: (_e, cx) => this.openKeys(detail, cx),
+    });
     return Popup.new(`configurator-keys-popup-${detail.name}`, trigger)
       .anchor("top_right")
       .when(content, (el) => el.content(this.keyPanelView(t, detail)));
@@ -1137,9 +1132,20 @@ export default class Configurator extends View {
     }
     if (!form.fields.length) {
       return base
-        .px(14)
-        .py(10)
-        .child(div().text_size(12).text_color(t.dim).child("Nothing to configure for this entry."));
+        .child(
+          h_flex()
+            .h(36)
+            .flex_none()
+            .px(14)
+            .gap(10)
+            .items_center()
+            .border_b(1)
+            .border_color(t.border)
+            .child(div().text_size(11).font_semibold().text_color(t.dim).child("SETTINGS")),
+        )
+        .child(
+          div().px(14).py(10).text_size(12).text_color(t.dim).child("This entry ships no settings."),
+        );
     }
     const changed = changedKeys(form.fields, form.drafts, form.settings);
     return base
@@ -1181,7 +1187,7 @@ export default class Configurator extends View {
           .flex_1()
           .min_h(0)
           .child(
-            v_flex().id("configurator-settings-body").size_full().overflow_y_scroll().py(2).pr(6).children(
+            v_flex().id("configurator-settings-body").size_full().overflow_y_scroll().py(2).pr(12).children(
               form.groups.map((group) =>
                 v_flex()
                   .when(Boolean(group.name), (el) =>
@@ -1210,40 +1216,54 @@ export default class Configurator extends View {
       : ORIGIN_WORDS[row.origin];
   }
 
+  // Both the click and the arrow keys land here, so they cannot drift apart.
+  selectRow(name, cx) {
+    if (name === this.selected) return;
+    this.selected = name;
+    this.openSelect = null;
+    this.hoveredField = null;
+    this.sourceNote = "";
+    this.sourceRepo.set_value("");
+    this.sourceRef.set_value("");
+    cx.notify();
+    cx.spawn(async (cx) => {
+      const detail = await this.detailFor(name);
+      if (this.selected !== name) return;
+      this.detail = detail;
+      cx.notify();
+    });
+  }
+
   seat(t, row) {
     const on = row.name === this.selected;
-    return h_flex()
+    return v_flex()
       .id(`configurator-${row.name}`)
-      .h(32)
+      .h(40)
       .pl(10)
-      .pr(18)
-      .gap(8)
-      .items_center()
+      .pr(24)
+      .py(4)
+      .gap(2)
+      .justify_center()
+      .border_b(1)
+      .border_color(t.border)
       .cursor_pointer()
       .when(on, (el) => el.bg(t.selected))
       .hover((s) => s.bg(t.hover))
-      .on_click((_e, cx) => {
-        this.selected = row.name;
-        this.openSelect = null;
-        this.hoveredField = null;
-        this.sourceNote = "";
-        this.sourceRepo.set_value("");
-        this.sourceRef.set_value("");
-        cx.notify();
-        cx.spawn(async (cx) => {
-          const detail = await this.detailFor(row.name);
-          if (this.selected !== row.name) return;
-          this.detail = detail;
-          cx.notify();
-        });
-      })
-      .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(row.title))
-      .when(Boolean(CHECK_DOTS[row.checkState]), (el) =>
-        el.child(div().w(5).h(5).rounded(3).bg(t[CHECK_DOTS[row.checkState]])),
+      .on_click((_e, cx) => this.selectRow(row.name, cx))
+      .child(
+        h_flex()
+          .gap(6)
+          .items_center()
+          .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(row.title))
+          .when(Boolean(CHECK_DOTS[row.checkState]), (el) =>
+            el.child(div().w(5).h(5).rounded(3).bg(t[CHECK_DOTS[row.checkState]])),
+          ),
       )
-      .child(div().flex_none().min_w(0).truncate().text_size(11).text_color(t.dim).child(this.originWord(row)))
-      .when(Boolean(row.version), (el) =>
-        el.child(div().flex_none().min_w(0).truncate().text_size(11).text_color(t.dim).child(row.version)),
+      .child(
+        h_flex()
+          .gap(6)
+          .items_center()
+          .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(this.originWord(row))),
       );
   }
 
@@ -1253,11 +1273,11 @@ export default class Configurator extends View {
     const detail = this.detail;
     const base = v_flex()
       .id("configurator-detail")
-      .h(200)
+      .max_h(300)
       .flex_none()
       .px(14)
       .py(10)
-      .gap(5)
+      .gap(7)
       .border_b(1)
       .border_color(t.border)
       .bg(t.background);
@@ -1272,13 +1292,23 @@ export default class Configurator extends View {
         h_flex()
           .gap(8)
           .items_center()
-          .child(div().flex_1().min_w(0).truncate().text_size(15).text_color(t.foreground).child(detail.title))
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .truncate()
+              .text_size(13)
+              .font_semibold()
+              .text_color(t.foreground)
+              .child(detail.title),
+          )
           .when(Boolean(detail.version), (el) =>
             el.child(div().text_size(11).text_color(t.dim).child(detail.version)),
           )
           .child(div().text_size(11).text_color(t.muted).child(this.originWord(detail))),
       )
       .child(div().font_family("JetBrains Mono").text_size(11).text_color(t.dim).child(detail.folder))
+      .child(this.sectionLabel(t, "PROVENANCE"))
       .child(
         detail.unknown
           ? this.sourceRow(t)
@@ -1307,6 +1337,7 @@ export default class Configurator extends View {
       .when(Boolean(detail.checkError), (el) =>
         el.child(div().min_w(0).text_size(11).text_color(t.ansi1).child(detail.checkError)),
       )
+      .child(this.sectionLabel(t, "FILES"))
       .child(
         h_flex()
           .flex_wrap()
@@ -1349,43 +1380,67 @@ export default class Configurator extends View {
         el.child(div().text_size(11).text_color(t.ansi1).child(`Ledger: ${this.ledgerProblem}`)),
       )
       .child(div().flex_1())
-      .child(this.updateRow(t, detail))
-      .child(this.uninstallRow(t, detail));
+      .child(this.actionsRow(t, detail));
   }
 
-  // The Reference scan's line, and the Uninstall action. A shipped entry says why it has
-  // none; every other Origin opens the confirm panel and moves nothing until it is pressed.
-  uninstallRow(t, detail) {
-    const plan = this.uninstall?.name === detail.name ? this.uninstall : null;
-    const refusal = refusalOf(detail.origin);
-    const trigger = refusal
-      ? div().text_size(11).text_color(t.dim).child(refusal)
-      : div()
-          .id(`configurator-uninstall-${detail.name}`)
-          .flex_none()
-          .px(10)
-          .py(3)
-          .rounded(6)
-          .border_1()
-          .border_color(t.border)
-          .bg(t.background)
-          .text_size(12)
-          .text_color(this.uninstalling ? t.dim : t.foreground)
-          .cursor_pointer()
-          .hover((s) => s.bg(t.hover))
-          .on_click((_e, cx) => this.openUninstall(detail, cx))
-          .child("Uninstall");
+  // A small uppercase group label, the same shape the app's own settings panes use.
+  sectionLabel(t, text) {
+    return div().flex_none().pt(2).text_size(10.5).font_semibold().text_color(t.dim).child(text);
+  }
+
+  // The one row of actions for the selected entry, its reason on the left.
+  actionsRow(t, detail) {
+    const error = this.updateError?.name === detail.name ? this.updateError.text : "";
+    const note = this.updateNote?.name === detail.name ? this.updateNote.text : "";
+    const target = updateTargetOf(this.ledger[detail.name]);
+    const reason = error || note || updateNoteOf(detail.origin, target) || detail.scanText;
     return h_flex()
       .w_full()
       .gap(8)
       .items_center()
-      .child(div().flex_1().min_w(0).text_size(11).text_color(t.dim).child(detail.scanText))
-      .child(this.keysTrigger(t, detail))
       .child(
-        Popup.new(`configurator-uninstall-popup-${detail.name}`, trigger)
-          .anchor("top_right")
-          .when(Boolean(plan), (el) => el.content(this.confirmPanel(t, plan))),
-      );
+        div().flex_1().min_w(0).truncate().text_size(11).text_color(error ? t.blocked : t.dim).child(reason),
+      )
+      .child(this.keysTrigger(t, detail))
+      .child(this.uninstallButton(t, detail))
+      .child(this.updateButton(t, detail));
+  }
+
+  // Every action button has this shape, so none sits taller or rounder than its neighbours;
+  // disarmed keeps the button where it is and lets the row's reason say why.
+  button(t, id, label, options = {}) {
+    return div()
+      .id(id)
+      .flex_none()
+      .h(24)
+      .px(10)
+      .flex()
+      .items_center()
+      .rounded(6)
+      .border_1()
+      .border_color(options.solid ? t.accent : t.border)
+      .bg(options.solid ? t.selected : t.background)
+      .text_size(11.5)
+      .text_color(options.disarmed ? t.dim : t.foreground)
+      .when(!options.disarmed, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
+      .on_click((event, cx) => {
+        if (options.disarmed) return;
+        options.on_click(event, cx);
+      })
+      .child(label);
+  }
+
+  // The Uninstall action: a shipped entry keeps its button, dimmed, with the reason in the
+  // row; every other Origin opens the confirm panel and moves nothing until it is pressed.
+  uninstallButton(t, detail) {
+    const plan = this.uninstall?.name === detail.name ? this.uninstall : null;
+    const trigger = this.button(t, `configurator-uninstall-${detail.name}`, this.uninstalling ? "Moving…" : "Uninstall", {
+      disarmed: Boolean(refusalOf(detail.origin)) || this.uninstalling,
+      on_click: (_e, cx) => this.openUninstall(detail, cx),
+    });
+    return Popup.new(`configurator-uninstall-popup-${detail.name}`, trigger)
+      .anchor("top_right")
+      .when(Boolean(plan), (el) => el.content(this.confirmPanel(t, plan)));
   }
 
   // The confirm panel lists the Reference scan, where the folder goes, and an explicit
@@ -1510,41 +1565,16 @@ export default class Configurator extends View {
 
   // The Update action, and its question. Only an entry with a recorded repository, ref and
   // hashes can be updated; the confirm panel appears only when a file differs from them.
-  updateRow(t, detail) {
+  updateButton(t, detail) {
     const job = this.updateJob?.name === detail.name ? this.updateJob : null;
-    const note = this.updateNote?.name === detail.name ? this.updateNote.text : "";
-    const error = this.updateError?.name === detail.name ? this.updateError.text : "";
     const target = updateTargetOf(this.ledger[detail.name]);
-    const explanation = note || error ? "" : (updateNoteOf(detail.origin, target) ?? "");
-    const trigger = div()
-      .id(`configurator-update-${detail.name}`)
-      .flex_none()
-      .px(10)
-      .py(3)
-      .rounded(6)
-      .border_1()
-      .border_color(t.border)
-      .bg(t.background)
-      .text_size(12)
-      .text_color(this.updating ? t.dim : t.foreground)
-      .cursor_pointer()
-      .hover((s) => s.bg(t.hover))
-      .on_click((_e, cx) => this.startUpdate(detail, cx))
-      .child(this.updating ? "Updating…" : "Update");
-    return h_flex()
-      .w_full()
-      .gap(8)
-      .items_center()
-      .child(
-        div().flex_1().min_w(0).text_size(11).text_color(error ? t.blocked : t.dim).child(error || note || explanation),
-      )
-      .when(Boolean(target), (el) =>
-        el.child(
-          Popup.new(`configurator-update-popup-${detail.name}`, trigger)
-            .anchor("top_right")
-            .when(Boolean(job), (popup) => popup.content(this.updatePanel(t, job))),
-        ),
-      );
+    const trigger = this.button(t, `configurator-update-${detail.name}`, this.updating ? "Updating…" : "Update", {
+      disarmed: Boolean(this.updating) || !target,
+      on_click: (_e, cx) => this.startUpdate(detail, cx),
+    });
+    return Popup.new(`configurator-update-popup-${detail.name}`, trigger)
+      .anchor("top_right")
+      .when(Boolean(job), (popup) => popup.content(this.updatePanel(t, job)));
   }
 
   // The question: which files differ, where they go, and the two answers. Nothing has been
@@ -1838,12 +1868,48 @@ export default class Configurator extends View {
   }
 
   // The two views the left column switches between; the installed entries stay the default.
+  // The dialog's title row: what this is, how many entries it found, and the view switch.
+  header(t) {
+    const count =
+      this.tab === "installed"
+        ? filterRows(this.rows, this.filter).length
+        : galleryFiltered(this.gallery.rows, this.galleryText).length;
+    return h_flex()
+      .flex_none()
+      .gap(10)
+      .items_center()
+      .px(14)
+      .py(8)
+      .border_b(1)
+      .border_color(t.border)
+      .bg(t.surface)
+      .child(div().flex_none().text_size(13).font_semibold().text_color(t.foreground).child("Configurator"))
+      .child(
+        div()
+          .flex_none()
+          .text_size(11)
+          .text_color(t.dim)
+          .child(this.tab === "installed" ? `${count} entries` : `${count} repositories`),
+      )
+      .child(div().flex_1())
+      .child(this.tabs(t))
+      .child(
+        this.button(t, "configurator-close", "\u2715", {
+          on_click: (_e, _cx) => closeOverlay(this.overlay),
+        }),
+      );
+  }
+
+  // The view switch, a segmented control in the app's own style.
   tabs(t) {
     return h_flex()
       .flex_none()
-      .gap(6)
-      .px(10)
-      .pt(10)
+      .h(24)
+      .rounded(6)
+      .border_1()
+      .border_color(t.border)
+      .bg(t.background)
+      .overflow_hidden()
       .child(this.tabButton(t, "installed", "Installed"))
       .child(this.tabButton(t, "gallery", "Gallery"));
   }
@@ -1852,18 +1918,14 @@ export default class Configurator extends View {
     const on = this.tab === tab;
     return div()
       .id(`configurator-tab-${tab}`)
-      .h(28)
+      .h_full()
       .px(10)
       .flex()
       .items_center()
-      .rounded(7)
-      .border_1()
-      .border_color(on ? t.accent : t.border)
-      .bg(on ? t.selected : t.background)
-      .cursor_pointer()
-      .text_size(12)
+      .when(on, (el) => el.bg(t.raised))
+      .when(!on, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
+      .text_size(11.5)
       .text_color(on ? t.foreground : t.muted)
-      .hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => {
         this.tab = tab;
         cx.notify();
@@ -1917,10 +1979,25 @@ export default class Configurator extends View {
   // The gallery: one row per repository from the topic, and the Refresh action with the
   // cache's fetch time under it. Opening this view never fetches; only Refresh does.
   galleryPane(t) {
-    const rows = this.gallery.rows;
+    const rows = galleryFiltered(this.gallery.rows, this.galleryText);
     return v_flex()
       .flex_1()
+      .h_full()
       .min_h(0)
+      .child(
+        div().px(14).py(10).flex_none().child(
+          div()
+            .h(30)
+            .px(8)
+            .flex()
+            .items_center()
+            .rounded(7)
+            .border_1()
+            .border_color(t.border)
+            .bg(t.background)
+            .child(Input.new(this.galleryInput).h(28).w_full().text_size(12.5).text_color(t.foreground)),
+        ),
+      )
       .child(
         div()
           .relative()
@@ -1939,7 +2016,13 @@ export default class Configurator extends View {
                     .py(8)
                     .text_size(12)
                     .text_color(t.dim)
-                    .child(this.refreshing ? "Refreshing…" : "No gallery rows yet. Refresh to fetch them."),
+                    .child(
+                      this.refreshing
+                        ? "Refreshing…"
+                        : this.galleryText
+                          ? "No repository matches."
+                          : "No gallery rows yet. Refresh to fetch them.",
+                    ),
                 ),
               )
               .children(rows.map((row) => this.gallerySeat(t, row))),
@@ -1953,42 +2036,29 @@ export default class Configurator extends View {
     return v_flex()
       .id(`configurator-gallery-${row.repository}`)
       .gap(3)
-      .pl(10)
-      .pr(18)
-      .py(7)
+      .px(14)
+      .py(8)
       .border_b(1)
       .border_color(t.border)
       .child(
         h_flex()
-          .gap(8)
+          .gap(10)
           .items_center()
           .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(row.repository))
-          .child(div().text_size(11).text_color(t.muted).child(`★ ${row.stars}`)),
-      )
-      .child(
-        div()
-          .min_w(0)
-          .truncate()
-          .text_size(11)
-          .text_color(t.muted)
-          .child(row.description || "No description."),
-      )
-      .child(
-        h_flex()
-          .gap(8)
-          .items_center()
-          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(`Pushed ${row.pushedAt}`))
+          .child(div().flex_none().text_size(11).text_color(t.dim).child(`\u2605 ${row.stars}`))
           .child(
             div()
               .id(`configurator-gallery-install-${row.repository}`)
-              .h(22)
-              .px(8)
+              .flex_none()
+              .h(24)
+              .px(10)
               .flex()
               .items_center()
-              .rounded(5)
+              .rounded(6)
               .border_1()
               .border_color(t.border)
-              .text_size(11)
+              .bg(t.background)
+              .text_size(11.5)
               .text_color(this.installing === row.repository ? t.dim : t.foreground)
               .cursor_pointer()
               .hover((s) => s.bg(t.hover))
@@ -1998,8 +2068,23 @@ export default class Configurator extends View {
                   await this.install(row, cx);
                 });
               })
-              .child(this.installing === row.repository ? "Installing…" : "Install"),
+              .child(this.installing === row.repository ? "Installing\u2026" : "Install"),
           ),
+      )
+      .child(
+        h_flex()
+          .gap(10)
+          .items_center()
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .truncate()
+              .text_size(11)
+              .text_color(t.muted)
+              .child(row.description || "No description."),
+          )
+          .child(div().flex_none().text_size(11).text_color(t.dim).child(`Pushed ${row.pushedAt}`)),
       )
       .when(this.installNote?.repository === row.repository, (el) =>
         el.child(
@@ -2049,17 +2134,17 @@ export default class Configurator extends View {
           .child(
             div()
               .id("configurator-gallery-refresh")
-              .h(31)
-              .px(12)
+              .h(24)
+              .px(10)
               .flex()
               .items_center()
-              .rounded(7)
+              .rounded(6)
               .border_1()
               .border_color(t.border)
-              .bg(t.surface)
+              .bg(t.background)
               .cursor_pointer()
               .hover((s) => s.bg(t.hover))
-              .text_size(12)
+              .text_size(11.5)
               .text_color(this.refreshing ? t.dim : t.foreground)
               .on_click((_e, cx) => {
                 if (this.refreshing) return;
@@ -2093,17 +2178,17 @@ export default class Configurator extends View {
           .child(
             div()
               .id("configurator-check-updates")
-              .h(31)
-              .px(12)
+              .h(24)
+              .px(10)
               .flex()
               .items_center()
-              .rounded(7)
+              .rounded(6)
               .border_1()
               .border_color(t.border)
-              .bg(t.surface)
+              .bg(t.background)
               .cursor_pointer()
               .hover((s) => s.bg(t.hover))
-              .text_size(12)
+              .text_size(11.5)
               .text_color(this.checkingUpdates ? t.dim : t.foreground)
               .on_click((_e, cx) => {
                 if (this.checkingUpdates) return;
@@ -2118,36 +2203,55 @@ export default class Configurator extends View {
 
   // The dialog copy: the view switch, then the default installed list or the gallery.
   dialog(t) {
-    return h_flex()
+    return v_flex()
       .id("configurator-dialog")
       .size_full()
       .min_h(0)
       .track_focus(this.handle)
       .on_key_down((e, cx) => {
-        if (e.key !== "escape") return;
+        if (e.key === "escape") {
+          cx.stop_propagation();
+          closeOverlay(this.overlay);
+          return;
+        }
+        if (this.tab !== "installed" || e.key !== "up" && e.key !== "down") return;
+        const rows = filterRows(this.rows, this.filter);
+        if (!rows.length) return;
         cx.stop_propagation();
-        closeOverlay(this.overlay);
+        const at = rows.findIndex((row) => row.name === this.selected);
+        const step = e.key === "down" ? 1 : rows.length - 1;
+        const base = at < 0 ? (e.key === "down" ? -1 : 0) : at;
+        this.selectRow(rows[(base + step) % rows.length].name, cx);
       })
+      .child(this.header(t))
       .child(
-        v_flex()
-          .w(320)
-          .flex_none()
-          .h_full()
-          .min_h(0)
-          .bg(t.surface)
-          .child(this.tabs(t))
-          .when(this.tab === "installed", (el) => el.child(this.filterBox(t)))
-          .child(this.tab === "installed" ? this.entriesPane(t) : this.galleryPane(t))
-          .when(this.tab === "installed", (el) => el.child(this.checkRow(t))),
-      )
-      .child(
-        v_flex()
+        h_flex()
           .flex_1()
-          .min_w(0)
-          .h_full()
           .min_h(0)
-          .child(this.detailPane(t))
-          .child(this.settingsPane(t)),
+          .when(this.tab === "installed", (el) =>
+            el
+              .child(
+                v_flex()
+                  .w(320)
+                  .flex_none()
+                  .h_full()
+                  .min_h(0)
+                  .bg(t.surface)
+                  .child(this.filterBox(t))
+                  .child(this.entriesPane(t))
+                  .child(this.checkRow(t)),
+              )
+              .child(
+                v_flex()
+                  .flex_1()
+                  .min_w(0)
+                  .h_full()
+                  .min_h(0)
+                  .child(this.detailPane(t))
+                  .child(this.settingsPane(t)),
+              ),
+          )
+          .when(this.tab === "gallery", (el) => el.child(this.galleryPane(t))),
       );
   }
 

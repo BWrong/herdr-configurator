@@ -33,6 +33,7 @@ import {
   recordSource,
   pushedText,
   galleryRowsOf,
+  galleryFiltered,
   galleryPagePlan,
   galleryCacheOf,
   galleryCacheText,
@@ -1606,4 +1607,31 @@ test("the pure half of the flow leaves the person's keys file untouched", () => 
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
+});
+
+const GALLERY_ROWS = [
+  { repository: "herdrdev/tmux-prefix", stars: 12, description: "tmux style prefix", pushedAt: "2 days ago" },
+  { repository: "munza/herdr-mods", stars: 4, description: "Better config and better files", pushedAt: "5 days ago" },
+  { repository: "BWrong/herdr-configurator", stars: 1, description: "", pushedAt: "today" },
+];
+
+test("the gallery keeps every row when nothing is typed", () => {
+  assert.deepEqual(galleryFiltered(GALLERY_ROWS, ""), GALLERY_ROWS);
+  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "   "), GALLERY_ROWS);
+});
+
+test("the gallery filter matches a repository however it is typed", () => {
+  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "TMUX-PREFIX").map((row) => row.repository), [
+    "herdrdev/tmux-prefix",
+  ]);
+  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "bwrong/herdr").map((row) => row.repository), [
+    "BWrong/herdr-configurator",
+  ]);
+});
+
+test("the gallery filter matches a description too and says so when nothing does", () => {
+  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "better files").map((row) => row.repository), [
+    "munza/herdr-mods",
+  ]);
+  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "nothing here"), []);
 });

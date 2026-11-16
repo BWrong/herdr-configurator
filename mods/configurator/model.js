@@ -291,6 +291,13 @@ export function galleryCacheOf(text) {
   }
 }
 
+// The Gallery rows that still match the typed text, by repository or description.
+export function galleryFiltered(rows, text) {
+  const needle = String(text ?? "").trim().toLowerCase();
+  if (!needle) return rows;
+  return rows.filter((row) => `${row.repository} ${row.description}`.toLowerCase().includes(needle));
+}
+
 // The cache file's text, kept as the shape galleryCacheOf reads back.
 export function galleryCacheText(cache) {
   return `${JSON.stringify({ fetchedAt: cache?.fetchedAt ?? null, rows: cache?.rows ?? [] }, null, 2)}\n`;

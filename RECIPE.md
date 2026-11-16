@@ -17,61 +17,64 @@ the layout's tabs block at it — `"content": { "mod": "configurator" }` — and
 there; nothing else is drawn.
 
 **The dialog** (`mod.open` with `name: "configurator"`, or the gear). 960 × 680;
-Herdr draws the frame, the shadow and the title, the mod draws two columns.
+Herdr draws the frame and the shadow; the mod draws a header row and, under it, two columns.
 
-**Left column**, 320 px, `surface` background:
+**Left column**, 320 px, `surface` background, in the Installed view only:
 
-- Two tabs at the top, 10 px in: `Installed` (the default) and `Gallery`. Each is 28 px tall,
-  rounded 7 px, 12 px text; the chosen one has an `accent` border and a `selected` background.
-- Installed view: a filter box with 10 px padding, 30 px tall, rounded 7 px, the `background`
-  colour, a `border` line, placeholder "Filter entries…", 12.5 px text.
-  Under it the list, one row per entry, 32 px tall, 10 px left padding, 8 px gap: the title
-  at 13 px, then the Origin word at 11 px in `dim` (`shipped`, `cloned`, `third_party` or
-  `third_party · unknown`), then the version at 11 px `dim` when `mod.json` has one, and a
-  5 × 5 px dot before the Origin word only when the entry has a check state: `accent` for
-  upstream moved, `border` for up to date, `ansi1` for check failed. The selected row is
-  `selected`, hover is `hover`, and a `Scrollbar` runs always. Empty: "No entries match." or
-  "Loading…".
-  Under the list, a sticky row with 10 px padding and a 1 px top border: a note at 11 px
-  `dim`, and one `Check updates` button 31 px tall, rounded 7 px, 12 px, `surface` background,
-  `border` line. While it runs it reads "Checking…".
-- Gallery view: one row per repository, 10 px padding horizontally and 7 px vertically,
-  separated by 1 px `border` lines. The repository name at 13 px on the left, `★ n` at 11 px
-  in `muted` on the right; its description at 11 px `muted` (or "No description."); then
-  "Pushed YYYY-MM-DD" at 11 px `dim` and an `Install` button 22 px tall, 11 px text.
-  The footer holds the responder's error at 11 px `blocked`, a `Refresh` button 31 px tall
-  and 12 px, and "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet").
-  Empty: "No gallery rows yet. Refresh to fetch them." or "Refreshing…".
+- A filter box with 10 px padding, 30 px tall, rounded 7 px, the `background` colour, a
+  `border` line, placeholder "Filter entries…", 12.5 px text.
+- Under it the list, one row per entry, 40 px tall, 10 px left padding, 24 px right padding
+  clear of the scrollbar, a 1 px `border` line under each row: the first line is the title at
+  13 px, with a 5 × 5 px dot at its right only when the entry has a check state (`accent` for
+  upstream moved, `border` for up to date, `ansi1` for check failed); the second line is the
+  Origin word at 11 px `dim` (`shipped`, `cloned`, `third_party` or `third_party · unknown`).
+  The selected row is `selected`, hover is `hover`, and a `Scrollbar` runs always. Empty:
+  "No entries match." or "Loading…".
+- Under the list, a sticky row with 10 px padding and a 1 px top border: a note at 11 px
+  `dim`, and one `Check updates` button 24 px tall, rounded 6 px, 11.5 px, `background`
+  colour, `border` line. While it runs it reads "Checking…".
 
-**Right column, top — the detail pane**, 200 px tall regardless of window size, 14 px
-horizontal and 10 px vertical padding, 5 px gap, 1 px bottom border, `background` colour.
-It shows, for the selected entry: its title at 15 px, version at 11 px `dim`, the Origin word
-at 11 px `muted`; the folder as `mods/<name>` in JetBrains Mono at 11 px `dim`; the recorded
-provenance as `owner/repo @ abc1234` at 12 px (or "No recorded provenance" in `dim`, or the
-cloned entry's "This entry is a copy; it never follows upstream."; only an unknown origin
-reads "Unknown origin"); for a checked entry `checked 2026-11-16 08:00 UTC · upstream moved`
-(or `up to date` / `check failed`) at 11 px `dim`; a failed lookup's error text at 11 px
-`ansi1`; the first five files as chips, each with its name in JetBrains Mono at 11 px and its
-size at 10.5 px (`B`, or one decimal and `kB`), and past five a `+n more` chip, so a folder
-with many files cannot push the actions out of the fixed height; and the
-Reference scan at 11 px `dim` ("Referenced by 3 layouts: main, terminals, win98; key bindings:
-mod:<name> …" or "No layout references this entry and no key bindings.").
+**Gallery view**, the full width of the dialog under the header:
+
+- A search box 14 px in, 30 px tall, the shape of the filter, placeholder
+  "Search repositories…".
+- One row per repository, 14 px padding horizontally and 8 px vertically, a 1 px `border`
+  line under each row, two lines each: on the first the repository name at 13 px, `★ n` at
+  11 px `dim` and an `Install` button 24 px tall at the right; on the second its description
+  at 11 px `muted` (or "No description.") with "Pushed YYYY-MM-DD" at 11 px `dim` at the right.
+  The footer holds the responder's error at 11 px `blocked`, a `Refresh` button 24 px tall,
+  and "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet").
+  Empty: "No gallery rows yet. Refresh to fetch them.", "No repository matches." while
+  searching, or "Refreshing…".
+
+**Right column, top — the detail pane**, as tall as its contents up to 300 px, 14 px
+horizontal and 10 px vertical padding, 7 px gap, 1 px bottom border, `background` colour.
+Its first line is the title at 13 px semibold, the version at 11 px `dim` and the Origin word
+at 11 px `muted`, pushed right; then the folder as `mods/<name>` in JetBrains Mono at 11 px
+`dim`. Under a 10.5 px semibold `dim` label `PROVENANCE`: the recorded provenance as
+`owner/repo @ abc1234` at 12 px (or "No recorded provenance" in `dim`, or the cloned entry's
+"This entry is a copy; it never follows upstream."; only an unknown origin reads "Unknown
+origin"), and for a checked entry `checked 2026-11-16 08:00 UTC · upstream moved` (or
+`up to date` / `check failed`) at 11 px `dim`, then a failed lookup's error text at 11 px
+`ansi1`. Under a label `FILES`: the first five files as chips, each with its name in JetBrains
+Mono at 11 px and its size at 10.5 px (`B`, or one decimal and `kB`), and past five a
+`+n more` chip.
 Empty: "Select an entry." or "Loading…".
+
 
 For an unknown-origin entry the provenance line is replaced by two inputs — repository,
 placeholder "owner/repo or a GitHub URL", and ref, placeholder "main", 84 px wide — and a
 `Record provenance` button. An entry with no files says "No files on disk."
 
-Along the bottom of the detail pane, two rows:
-
-- Update: on the left the last report or its error at 11 px (`blocked` when failed); on the
-  right `Update`, or — when there is no recorded repository, ref and hashes to update from —
-  a line saying why: Herdr restores shipped files, a copy never follows upstream, or use
-  `Record provenance` to link an unknown origin.
-- Uninstall: the Reference scan at 11 px `dim`; `Key bindings` at 12 px when the entry is
-  third party and ships a `keys.json` or has a recorded repository; and `Uninstall` at 12 px,
-  or, for a shipped entry, the line "Herdr restores its own shipped entries on the next start;
-  there is nothing to uninstall."
+Along the bottom of the detail pane, one row: on the left, at 11 px `dim` (`blocked` when a
+report failed), one sentence — the last Update report or its error, else why Update is not
+available (Herdr restores shipped files, a copy never follows upstream, use
+`Record provenance` to link an unknown origin), else the Reference scan ("Referenced by 3
+layouts: main, terminals, win98; key bindings: mod:<name> …" or "No layout references this
+entry and no key bindings."); on the right, in order, `Key bindings` (third party, with a
+`keys.json` or a recorded repository), `Uninstall` and `Update` — each 24 px tall, rounded
+6 px, 11.5 px text, `background` with a `border` line. A button with nothing behind it stays
+in place, `dim`, unclickable, and the sentence says why.
 
 **Right column, bottom — settings**, `background` colour. A 36 px header with 14 px padding:
 "SETTINGS" at 11 px semibold `dim`, an optional note at 11 px `dim`, and `Save` at 12 px
@@ -82,8 +85,8 @@ body: one group per first path segment of the schema, its name uppercased at 11 
 from the file, the schema's description at 11 px `dim` while hovered, and the validation
 problem at 11 px `ansi1`. On the right a 96 px control: a text or number `Input` 26 px tall at
 12 px; an enum `Select` trigger 28 px tall at 12.5 px opening a 180 px menu; a boolean
-`Checkbox` 18 × 18 px. With no schema fields: one dim line, "Nothing to configure for this
-entry." No entry: "Select an entry." Loading: "Loading…".
+`Checkbox` 18 × 18 px. With no schema fields the header still shows and the body reads
+"This entry ships no settings." No entry: "Select an entry." Loading: "Loading…".
 
 Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`, `accent`,
 `selected`, `hover`, `muted`, `dim`, `foreground`, `ansi1`, `popover`, `solid`,
@@ -96,7 +99,10 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **Selecting a row** — the detail is read from disk for that entry and swapped in place;
   settings drafts are mirrored to `shared.json` (`configurator.drafts`) and re-applied when
   the form is built again, so closing and reopening the dialog keeps them.
-- **Filter** — matches a row's title or folder name, ignoring case and padding.
+- **Filter** — matches a row's title or folder name, ignoring case and padding; the Gallery's
+  search matches a repository's name or description the same way.
+- **Arrow keys** — `up` and `down` move the selection through the filtered rows and wrap, the
+  same as clicking a row; Escape or `✕` closes the dialog.
 - **Installed vs Gallery** — Installed needs no network. Opening Gallery reads only the cache
   at `data/configurator/gallery.json`; nothing is fetched until `Refresh`.
 - **Refresh** — one GitHub topic search (`q=topic:herdr-mod`, `per_page=100`, every page up
@@ -174,18 +180,18 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   right-hand group: the Git panel button (drawn only where the layout's `panel-body` stack has a
   `graph` child, so the gear keeps working as the entry point on a `tabs-graph` layout) and the
   gear, which runs `mod.open`.
-- `main.js` (2158 lines): `class Configurator extends View`. `init` reads `props()`, creates
+- `main.js` (2262 lines): `class Configurator extends View`. `init` reads `props()`, creates
   the filter and provenance inputs in the overlay copy, and — unless `checking()` — spawns
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,
   `installed.json`, every `layouts/*.json` and the gallery cache. `render` branches on
   `props().overlay`. Elements come from `gpui-kit` (`View`, `div`, `svg`) and `gpui-base`
   (`v_flex`, `h_flex`, `Scrollbar`, `InputState`, `Input`, `Select`, `Popup`, `Checkbox`).
-- `model.js` (990 lines): the pure half. No Herdr calls, so `node --test` runs it: folder
+- `model.js` (997 lines): the pure half. No Herdr calls, so `node --test` runs it: folder
   listing → rows, Origin, filter, file sizes, detail and Reference scan text, ledger
   parse/serialize with its version gate, sha256 comparison → update decision, write plan and
   report, key conflict split, gallery response → rows and pages, cache shape, install
   folder-name collision, uninstall and trash paths, settings fields/drafts/validation and
-  kept copy. `node --test mods/configurator/*.test.js` runs 120 tests.
+  kept copy. `node --test mods/configurator/*.test.js` runs 125 tests.
 - `mod.schema.json` describes this mod's own `mod.json` only. It declares no `settings`
   property: the Configurator has none of its own. At runtime it reads each entry's
   `mods/<name>/mod.schema.json` for the settings form.
@@ -201,8 +207,8 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   */`, `mkdir -p`, `mv`, `cp`, `rm -rf`.
 - Icons: one 14 px SVG, `mods/configurator/icons/gear.svg`, drawn with `svg(...)` so it
   follows the text colour.
-- Art: none. The preview is `herdr-app shot`, downscaled to the whole window so the tab bar's
-  gear is visible.
+- Art: none. The preview is `herdr-app shot`, cropped to the dialog so nothing behind it is
+  in the picture.
 
 ## Watch out
 
@@ -227,7 +233,8 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   message rather than retrying.
 - **V1 has no layouts of its own** — `layouts()` is only read to answer the Reference scan.
 - **Sizes**: 960 × 680 is the dialog's size, not a minimum; a narrow window clips the left
-  column first. The list has no row cap; the `Scrollbar` handles the rest.
+  column first. The list has no row cap; the `Scrollbar` handles the rest; the detail pane
+  grows with its contents up to 300 px, so wrapped file chips cannot clip the action row.
 - **`Key bindings` appears only when it has something to read**: a third-party entry with a
   local `keys.json` or a recorded repository. Shipped and cloned entries show no trigger.
 - **No Open action.** Entries with a `place` open from their own dock; an entry with
@@ -242,7 +249,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 ## Done when
 
 - `herdr-app check mods/configurator` exits 0, also from a fresh clone with no setup.
-- `node --test mods/configurator/*.test.js` passes (120 tests).
+- `node --test mods/configurator/*.test.js` passes (125 tests).
 - Copying the folder to `~/.config/herdr-app/mods/configurator` shows nothing until the
   layout's tabs block names it (`"content": { "mod": "configurator" }`); then its gear sits
   next to Files / Changes, and clicking it, or `herdr-app do mod.open '{"name":
