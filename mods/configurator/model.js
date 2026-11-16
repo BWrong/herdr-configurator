@@ -320,21 +320,13 @@ export function refreshedGallery(cache, { rows, fetchedAt, error } = {}) {
   return { fetchedAt: fetchedAt ?? null, rows: rows ?? [], error: null };
 }
 
-// Everything the detail pane shows for one row: where it lives, where it came from (the
-// ledger row first, then a `source` hint the author left in mod.json), the files on disk
-// and the Reference scan. Provenance is never blank: with nothing known it reads
-// "Unknown origin".
-export function detailOf(row, { folder = "", manifest = null, ledger = {}, files = [], layouts = [], keys = [] } = {}) {
+// Everything the detail pane shows for one row: where it lives, the provenance the ledger
+// records, the files on disk and the Reference scan. Provenance is never blank: an unknown
+// third-party entry reads "Unknown origin", a known Origin that has none says so.
+export function detailOf(row, { folder = "", ledger = {}, files = [], layouts = [], keys = [] } = {}) {
   const recorded = isObject(ledger?.[row?.name]) ? ledger[row.name] : {};
-  const hint = manifest?.source;
-  const hintObject = isObject(hint) ? hint : {};
-  const repo = firstString(
-    recorded.repository,
-    recorded.repo,
-    typeof hint === "string" ? hint : hintObject.repository,
-    hintObject.repo,
-  );
-  const commitRaw = firstString(recorded.commit, hintObject.commit);
+  const repo = firstString(recorded.repository, recorded.repo);
+  const commitRaw = firstString(recorded.commit);
   const commit = commitRaw ? commitRaw.slice(0, 7) : null;
   const scan = {
     layouts: layoutsReferencing(layouts, row.name),
@@ -352,7 +344,12 @@ export function detailOf(row, { folder = "", manifest = null, ledger = {}, files
     lastChecked: checkedText(recorded.checkedAt),
     checkState: checkStateOf(recorded),
     checkError: firstString(recorded.checkedError),
-    provenanceText: repo && commit ? `${repo} @ ${commit}` : (repo ?? commit ?? "Unknown origin"),
+    provenanceText:
+      repo && commit
+        ? `${repo} @ ${commit}`
+        : (repo ??
+          commit ??
+          (uninstallNoteOf(row.origin) ?? (row.unknown ? "Unknown origin" : "No recorded provenance"))),
     files: files ?? [],
     scan,
     scanText: scanText(scan),
@@ -403,6 +400,15 @@ export function refusalOf(origin) {
 // The explanation a cloned entry carries: it is a copy, not a failure.
 export function uninstallNoteOf(origin) {
   return origin === "cloned" ? "This entry is a copy; it never follows upstream." : null;
+}
+
+// What the Update row says instead of showing nothing when an Origin has no update target.
+export function updateNoteOf(origin, target) {
+  if (target) return null;
+  if (origin === "shipped")
+    return "Herdr restores its own shipped files on the next start; there is nothing to update.";
+  if (origin === "cloned") return "This entry is a copy; it never follows upstream.";
+  return "No recorded repository and ref yet — use Record provenance.";
 }
 
 // Everything the confirm panel needs for one entry: the Reference scan's answer, the

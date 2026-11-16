@@ -13,6 +13,8 @@ import {
   checking,
   closeOverlay,
   props,
+  shared,
+  setShared,
   run,
   theme,
   layouts,
@@ -24,6 +26,7 @@ import {
   rowsOf,
   filterRows,
   fileSizesOf,
+  fileChipsOf,
   detailOf,
   sizeText,
   settingsFields,
@@ -67,6 +70,7 @@ import {
   writePlan,
   updateReportText,
   updatePromptText,
+  updateNoteOf,
   updatedRow,
   updateTempPath,
 } from "./model.js";
@@ -74,7 +78,7 @@ import {
 const GALLERY_TOPIC_URL = "https://api.github.com/search/repositories?q=topic:herdr-mod&per_page=100&page=";
 
 const GEAR = "mods/configurator/icons/gear.svg";
-const ORIGIN_WORDS = { shipped: "shipped", cloned: "cloned", third_party: "third party" };
+const ORIGIN_WORDS = { shipped: "shipped", cloned: "cloned", third_party: "third_party" };
 // A row's check state as a dot colour and as the word the detail pane says.
 const CHECK_DOTS = { moved: "accent", current: "border", failed: "ansi1" };
 const CHECK_WORDS = { moved: "upstream moved", current: "up to date", failed: "check failed" };
@@ -182,12 +186,10 @@ export default class Configurator extends View {
   async detailFor(name) {
     const row = this.rows.find((r) => r.name === name);
     if (!row) return null;
-    const entry = this.entries.find((e) => e.name === name);
     const listing = await exec("/bin/sh", ["-c", 'cd "$1" && ls -lR 2>/dev/null', "sh", `${appHome()}/mods/${name}`]);
     const localKeys = await readTextFile(`${appHome()}/mods/${name}/keys.json`);
     const detail = detailOf(row, {
       folder: `mods/${name}`,
-      manifest: asObject(entry?.modJson),
       ledger: this.ledger,
       files: fileSizesOf(listing.stdout),
       layouts: this.layoutFiles,
@@ -299,9 +301,10 @@ export default class Configurator extends View {
     cx.notify();
   }
 
-  // One settings form per entry: the schema's rows and the person's drafts. Drafts are kept
-  // for the life of the dialog, so switching rows never loses typing.
+  // One settings form per entry: the schema's rows and the person's drafts. Drafts outlive
+  // the dialog: they are mirrored into shared.json and re-applied when a form is built again.
   buildForms() {
+    const saved = this.savedDrafts();
     for (const entry of this.entries) {
       if (this.forms[entry.name]) continue;
       const manifest = parseObject(entry.modJson) ?? {};
@@ -315,7 +318,12 @@ export default class Configurator extends View {
         fields,
         groups: settingsGroups(fields),
         settings,
-        drafts: draftOf(fields, settings),
+        drafts: {
+          ...draftOf(fields, settings),
+          ...(saved[entry.name] && typeof saved[entry.name] === "object" && !Array.isArray(saved[entry.name])
+            ? saved[entry.name]
+            : {}),
+        },
         inputs: {},
         problems: {},
         note: "",
@@ -328,12 +336,27 @@ export default class Configurator extends View {
           form.drafts[field.key] = state.value();
           delete form.problems[field.key];
           form.note = "";
+          this.saveDrafts();
           cx.notify();
         });
         form.inputs[field.key] = state;
       }
       this.forms[entry.name] = form;
     }
+  }
+
+  // The drafts a previous dialog copy left in shared.json, one object per entry.
+  savedDrafts() {
+    const value = shared("configurator.drafts");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+
+  // Mirror every form's drafts into shared.json, so closing and reopening keeps them.
+  saveDrafts() {
+    if (checking()) return;
+    const drafts = {};
+    for (const form of Object.values(this.forms)) drafts[form.name] = form.drafts;
+    setShared("configurator.drafts", drafts);
   }
 
   // better-config kept its own values beside its mod. Carry them into our folder once, and
@@ -408,6 +431,7 @@ export default class Configurator extends View {
           if (state) state.set_value(String(form.drafts[field.key] ?? ""));
         }
         const kept = await this.keep(form);
+        this.saveDrafts();
         return kept ? "Saved. The kept copy could not be written." : "Saved.";
       } catch (error) {
         failure = error;
@@ -443,7 +467,7 @@ export default class Configurator extends View {
     return `Couldn't write the ledger${failure ? `: ${failure}` : "."}`;
   }
 
-  // Record an unknown-origin entry's source: hash every file it ships, resolve the ref's
+  // Record an unknown-origin entry's provenance: hash every file it ships, resolve the ref's
   // current commit (the one network call), then write the row. The ledger stays untouched.
   async record(name, repo, ref) {
     if (checking()) return { note: "" };
@@ -897,6 +921,26 @@ export default class Configurator extends View {
                 .text_color(t.blocked)
                 .child(keyConflictText(conflict)),
             ),
+          )
+          // The same clipboard action the offered half has, over the conflict lines.
+          .child(
+            h_flex().child(
+              div()
+                .id(`configurator-copy-conflicts-${id}`)
+                .h(20)
+                .px(7)
+                .flex()
+                .items_center()
+                .rounded(5)
+                .border_1()
+                .border_color(t.border)
+                .text_size(10.5)
+                .text_color(t.foreground)
+                .cursor_pointer()
+                .hover((s) => s.bg(t.hover))
+                .on_click((_e, cx) => cx.write_to_clipboard(offer.conflicts.map(keyConflictText).join("\n")))
+                .child("Copy all conflicts"),
+            ),
           ),
       )
       .when(Boolean(offer?.problems?.length), (el) =>
@@ -944,6 +988,7 @@ export default class Configurator extends View {
           form.drafts[field.key] = checked;
           delete form.problems[field.key];
           form.note = "";
+          this.saveDrafts();
           cx.notify();
         })
         .child(
@@ -1004,6 +1049,7 @@ export default class Configurator extends View {
                 form.note = "";
                 this.openSelect = null;
                 this.handle.focus();
+                this.saveDrafts();
                 cx.notify();
               })
               .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(choice.label)),
@@ -1259,7 +1305,7 @@ export default class Configurator extends View {
       .child(div().font_family("JetBrains Mono").text_size(11).text_color(t.dim).child(detail.folder))
       .child(
         detail.unknown
-          ? this.sourceRow(t, detail)
+          ? this.sourceRow(t)
           : h_flex()
               .gap(10)
               .items_center()
@@ -1503,6 +1549,7 @@ export default class Configurator extends View {
     const note = this.updateNote?.name === detail.name ? this.updateNote.text : "";
     const error = this.updateError?.name === detail.name ? this.updateError.text : "";
     const target = updateTargetOf(this.ledger[detail.name]);
+    const explanation = note || error ? "" : (updateNoteOf(detail.origin, target) ?? "");
     const trigger = div()
       .id(`configurator-update-${detail.name}`)
       .flex_none()
@@ -1522,7 +1569,9 @@ export default class Configurator extends View {
       .w_full()
       .gap(8)
       .items_center()
-      .child(div().flex_1().min_w(0).text_size(11).text_color(error ? t.blocked : t.dim).child(error || note))
+      .child(
+        div().flex_1().min_w(0).text_size(11).text_color(error ? t.blocked : t.dim).child(error || note || explanation),
+      )
       .when(Boolean(target), (el) =>
         el.child(
           Popup.new(`configurator-update-popup-${detail.name}`, trigger)
@@ -1756,19 +1805,10 @@ export default class Configurator extends View {
   }
 
   // Unknown origin: the repository and ref to record, and the action that records them.
-  sourceRow(t, detail) {
+  sourceRow(t) {
     return h_flex()
       .gap(8)
       .items_center()
-      .child(
-        div()
-          .flex_none()
-          .max_w(200)
-          .truncate()
-          .text_size(11)
-          .text_color(t.dim)
-          .child(detail.repo ? `Hint ${detail.repo}` : "Unknown origin"),
-      )
       .child(
         div()
           .h(24)
@@ -1799,7 +1839,7 @@ export default class Configurator extends View {
       )
       .child(
         div()
-          .id("configurator-record-source")
+          .id("configurator-record-provenance")
           .flex_none()
           .px(10)
           .py(3)
@@ -1812,7 +1852,7 @@ export default class Configurator extends View {
           .cursor_pointer()
           .hover((s) => s.bg(t.hover))
           .on_click((_e, cx) => this.startRecording(this.rows.find((row) => row.name === this.detail?.name), cx))
-          .child("Record source"),
+          .child("Record provenance"),
       );
   }
 

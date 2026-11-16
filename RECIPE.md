@@ -47,22 +47,27 @@ Herdr draws the frame, the shadow and the title, the mod draws two columns.
 horizontal and 10 px vertical padding, 5 px gap, 1 px bottom border, `background` colour.
 It shows, for the selected entry: its title at 15 px, version at 11 px `dim`, the Origin word
 at 11 px `muted`; the folder as `mods/<name>` in JetBrains Mono at 11 px `dim`; the recorded
-provenance as `owner/repo @ abc1234` at 12 px (or "Unknown origin" in `dim`); for a checked
-entry `checked 2026-11-16 08:00 UTC · upstream moved` (or `up to date` / `check failed`) at
-11 px `dim`; a failed lookup's error text at 11 px `ansi1`; every file as a chip with its name
-in JetBrains Mono at 11 px and its size at 10.5 px (`B`, or one decimal and `kB`); and the
+provenance as `owner/repo @ abc1234` at 12 px (or "No recorded provenance" in `dim`, or the
+cloned entry's "This entry is a copy; it never follows upstream."; only an unknown origin
+reads "Unknown origin"); for a checked entry `checked 2026-11-16 08:00 UTC · upstream moved`
+(or `up to date` / `check failed`) at 11 px `dim`; a failed lookup's error text at 11 px
+`ansi1`; the first five files as chips, each with its name in JetBrains Mono at 11 px and its
+size at 10.5 px (`B`, or one decimal and `kB`), and past five a `+n more` chip, so a folder
+with many files cannot push the actions out of the fixed height; and the
 Reference scan at 11 px `dim` ("Referenced by 3 layouts: main, terminals, win98; key bindings:
 mod:<name> …" or "No layout references this entry and no key bindings.").
 Empty: "Select an entry." or "Loading…".
 
 For an unknown-origin entry the provenance line is replaced by two inputs — repository,
 placeholder "owner/repo or a GitHub URL", and ref, placeholder "main", 84 px wide — and a
-`Record source` button. An entry with no files says "No files on disk."
+`Record provenance` button. An entry with no files says "No files on disk."
 
 Along the bottom of the detail pane, two rows:
 
 - Update: on the left the last report or its error at 11 px (`blocked` when failed); on the
-  right `Update`, or nothing when the entry has no recorded repository, ref and hashes.
+  right `Update`, or — when there is no recorded repository, ref and hashes to update from —
+  a line saying why: Herdr restores shipped files, a copy never follows upstream, or use
+  `Record provenance` to link an unknown origin.
 - Uninstall: the Reference scan at 11 px `dim`; `Key bindings` at 12 px when the entry is
   third party and ships a `keys.json` or has a recorded repository; and `Uninstall` at 12 px,
   or, for a shipped entry, the line "Herdr restores its own shipped entries on the next start;
@@ -89,7 +94,8 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **Strip click** — `run("mod.open", {name: "configurator"})`. Escape, or `closeOverlay`,
   closes the dialog; `mod.open` again toggles it.
 - **Selecting a row** — the detail is read from disk for that entry and swapped in place;
-  the settings drafts of the entry you leave are kept for the life of the dialog.
+  settings drafts are mirrored to `shared.json` (`configurator.drafts`) and re-applied when
+  the form is built again, so closing and reopening the dialog keeps them.
 - **Filter** — matches a row's title or folder name, ignoring case and padding.
 - **Installed vs Gallery** — Installed needs no network. Opening Gallery reads only the cache
   at `data/configurator/gallery.json`; nothing is fetched until `Refresh`.
@@ -158,25 +164,26 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   One folder, two copies: the docked one draws the strip (`props().overlay` absent), the
   overlay one draws the dialog (`props().overlay` set). They share no module state; the
   dialog copy does its own reading.
-- `main.js` (2115 lines): `class Configurator extends View`. `init` reads `props()`, creates
-  the filter and source inputs in the overlay copy, and — unless `checking()` — spawns
+- `main.js` (2184 lines): `class Configurator extends View`. `init` reads `props()`, creates
+  the filter and provenance inputs in the overlay copy, and — unless `checking()` — spawns
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,
   `installed.json`, every `layouts/*.json` and the gallery cache. `render` branches on
   `props().overlay`. Elements come from `gpui-kit` (`View`, `div`, `svg`) and `gpui-base`
   (`v_flex`, `h_flex`, `Scrollbar`, `InputState`, `Input`, `Select`, `Popup`, `Checkbox`).
-- `model.js` (983 lines): the pure half. No Herdr calls, so `node --test` runs it: folder
+- `model.js` (990 lines): the pure half. No Herdr calls, so `node --test` runs it: folder
   listing → rows, Origin, filter, file sizes, detail and Reference scan text, ledger
   parse/serialize with its version gate, sha256 comparison → update decision, write plan and
   report, key conflict split, gallery response → rows and pages, cache shape, install
   folder-name collision, uninstall and trash paths, settings fields/drafts/validation and
-  kept copy. `node --test mods/configurator/*.test.js` runs 118 tests.
+  kept copy. `node --test mods/configurator/*.test.js` runs 120 tests.
 - `mod.schema.json` describes this mod's own `mod.json` only. It declares no `settings`
   property: the Configurator has none of its own. At runtime it reads each entry's
   `mods/<name>/mod.schema.json` for the settings form.
 - `herdr` calls: `appHome`, `home`, `exec`, `readTextFile`, `writeTextFile`, `checking`,
-  `closeOverlay`, `props`, `run` (`mod.open` only), `theme`, `layouts()`, `keys()`, `notify`.
+  `closeOverlay`, `props`, `shared` / `setShared` (drafts only), `run` (`mod.open` only),
+  `theme`, `layouts()`, `keys()`, `notify`.
 - Network: `fetch` to `api.github.com/search/repositories` (the topic), `api.github.com/
-  repos/{repo}/commits/{ref}` (checks, Record source), and `raw.githubusercontent.com` (an
+  repos/{repo}/commits/{ref}` (checks, Record provenance), and `raw.githubusercontent.com` (an
   entry's `keys.json`). Unauthenticated: 60 requests/hour, 10 searches/minute.
 - Programs: `git clone`, `git -C <folder> rev-parse HEAD` / `--abbrev-ref HEAD`, `herdr-app
   check <folder>`, `shasum -a 256` (via `find | xargs`), and `/bin/sh` for `ls -lR`, `ls -d
@@ -222,7 +229,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 ## Done when
 
 - `herdr-app check mods/configurator` exits 0, also from a fresh clone with no setup.
-- `node --test mods/configurator/*.test.js` passes (118 tests).
+- `node --test mods/configurator/*.test.js` passes (120 tests).
 - Copying the folder to `~/.config/herdr-app/mods/configurator` docks the 26 px strip at the
   bottom; clicking it, or `herdr-app do mod.open --name configurator`, opens the dialog; and
   `herdr-app shot` shows both.

@@ -61,6 +61,7 @@ import {
   writePlan,
   updateReportText,
   updatePromptText,
+  updateNoteOf,
   updatedRow,
   updateTempPath,
 } from "./model.js";
@@ -242,7 +243,7 @@ const rowsForDetail = rowsOf(
   [
     { name: "better-changes", modJson: '{"title":"Better Changes","version":"0.2.0"}' },
     { name: "better-config", modJson: '{"title":"Better Config","version":"0.1.0"}' },
-    { name: "hinted", modJson: '{"title":"Hinted","source":"BWrong/hinted"}' },
+    { name: "catppuccin-status", modJson: '{"title":"Catppuccin Status","cloned_from":{"name":"workspace-status"}}' },
     { name: "help", modJson: '{"title":"Help"}' },
   ],
   { installed, ledger: { "better-changes": { repository: "BWrong/better-changes", ref: "main", commit: "abcdef1234567" } } },
@@ -275,23 +276,13 @@ test("the detail of a ledger entry carries its repository, short commit and file
   );
 });
 
-test("the detail falls back to a source hint in mod.json when the ledger has no row", () => {
-  const hinted = detailOf(rowsForDetail.find((row) => row.name === "hinted"), {
-    folder: "mods/hinted",
+test("the detail ignores a source hint an entry's mod.json happens to carry", () => {
+  const hinted = detailOf(rowsForDetail.find((row) => row.name === "better-config"), {
+    folder: "mods/better-config",
     manifest: { source: "BWrong/hinted" },
   });
-  assert.equal(hinted.repo, "BWrong/hinted");
+  assert.equal(hinted.repo, null);
   assert.equal(hinted.commit, null);
-  assert.equal(hinted.provenanceText, "BWrong/hinted");
-});
-
-test("the detail reads a source hint object's repo and commit too", () => {
-  const hinted = detailOf(rowsForDetail.find((row) => row.name === "hinted"), {
-    folder: "mods/hinted",
-    manifest: { source: { repo: "BWrong/hinted", commit: "fedcba9876543" } },
-  });
-  assert.equal(hinted.repo, "BWrong/hinted");
-  assert.equal(hinted.commit, "fedcba9");
 });
 
 test("an entry with no provenance reads as unknown, never blank", () => {
@@ -305,11 +296,28 @@ test("an entry with no provenance reads as unknown, never blank", () => {
   assert.equal(detail.scanText, "No layout references this entry and no key bindings.");
 });
 
-test("a shipped entry also reads as unknown provenance until it is linked", () => {
+test("a shipped entry says no provenance is recorded, never unknown", () => {
   const detail = detailOf(rowsForDetail.find((row) => row.name === "help"), { folder: "mods/help" });
   assert.equal(detail.origin, "shipped");
-  assert.equal(detail.provenanceText, "Unknown origin");
+  assert.equal(detail.provenanceText, "No recorded provenance");
   assert.deepEqual(detail.files, []);
+});
+
+test("a cloned entry's provenance line says it never follows upstream", () => {
+  const detail = detailOf(rowsForDetail.find((row) => row.name === "catppuccin-status"), {
+    folder: "mods/catppuccin-status",
+  });
+  assert.equal(detail.origin, "cloned");
+  assert.equal(detail.provenanceText, "This entry is a copy; it never follows upstream.");
+});
+
+test("the detail pane's file chips cap at a limit and count the rest", () => {
+  const files = ["a.js", "b.js", "c.js", "d.js", "e.js", "f.js", "g.js"].map((name) => ({ name, size: 1 }));
+  const chips = fileChipsOf(files);
+  assert.deepEqual(chips.shown.map((file) => file.name), ["a.js", "b.js", "c.js", "d.js", "e.js"]);
+  assert.equal(chips.more, 2);
+  assert.deepEqual(fileChipsOf(files.slice(0, 3)), { shown: files.slice(0, 3), more: 0 });
+  assert.deepEqual(fileChipsOf(null), { shown: [], more: 0 });
 });
 
 test("sizeText writes byte sizes in B and kB", () => {
@@ -911,6 +919,20 @@ test("a cloned entry is a copy that never follows upstream, and can still go", (
   assert.equal(plan.reason, null);
   assert.equal(plan.note, "This entry is a copy; it never follows upstream.");
   assert.ok(plan.destination.endsWith("/catppuccin-status"));
+});
+
+// The Update row explains the same Origins in its own words; a tracked entry needs none.
+test("an Origin with no update target says why instead of showing nothing", () => {
+  assert.equal(
+    updateNoteOf("shipped", null),
+    "Herdr restores its own shipped files on the next start; there is nothing to update.",
+  );
+  assert.equal(updateNoteOf("cloned", null), "This entry is a copy; it never follows upstream.");
+  assert.equal(
+    updateNoteOf("third_party", null),
+    "No recorded repository and ref yet — use Record provenance.",
+  );
+  assert.equal(updateNoteOf("third_party", { repo: "o/r", ref: "main", files: {} }), null);
 });
 
 test("an uninstall plan with no scan says none in both halves", () => {
