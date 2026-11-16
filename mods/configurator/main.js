@@ -146,9 +146,10 @@ export default class Configurator extends View {
   }
 
   // Every folder under mods/, its mod.json, Herdr's shipped file list, the ledger (absent
-  // until there is one to read), and the texts the Reference scan reads. Nothing is written
-  // here and no file sizes are cached: those are read again each time a row is selected.
+  // until there is one to read), and the texts the Reference scan reads. The one write is
+  // carryLegacy's kept copy; no file sizes are cached, they are read again on each selection.
   async load() {
+    if (checking()) return;
     const entries = [];
     for (const name of await this.modsFolderNames()) {
       entries.push({
@@ -211,6 +212,7 @@ export default class Configurator extends View {
   // sha256 of every file under a folder, keyed by its path. gpui-shell writes these into
   // every mod folder when it loads one (see .gitignore), so they are not what arrived.
   async hashFolder(folder) {
+    if (checking()) return {};
     const listing = await exec("/bin/sh", ["-c", 'cd "$1" && find . -type f -print0 | xargs -0 shasum -a 256', "sh", folder]);
     const files = hashesOf(listing.stdout);
     for (const generated of ["gpui-kit.d.ts", "jsconfig.json"]) delete files[generated];
@@ -366,6 +368,7 @@ export default class Configurator extends View {
 
   // Keep the version and the changed values outside the managed mod, conditionally.
   async keep(form) {
+    if (checking()) return null;
     const folder = `${appHome()}/data/configurator/kept`;
     const path = `${folder}/${form.name}.json`;
     const text = `${JSON.stringify(keptShape(form.manifest), null, 2)}\n`;
@@ -386,6 +389,7 @@ export default class Configurator extends View {
   // Only the changed keys, into the entry's mod.json, on top of what is there right now. A
   // write Herdr moved under us is re-read and retried, never clobbered.
   async writeSettings(form, plan) {
+    if (checking()) return null;
     const path = `${appHome()}/mods/${form.name}/mod.json`;
     let raw = await readTextFile(path);
     let failure = null;
@@ -417,6 +421,7 @@ export default class Configurator extends View {
   // attempt, so a ledger the person edited meanwhile keeps their changes. A ledger that
   // reports a problem is left alone rather than replaced.
   async writeLedger(merge) {
+    if (checking()) return null;
     const folder = `${appHome()}/data/configurator`;
     const path = `${folder}/ledger.json`;
     let failure = null;
