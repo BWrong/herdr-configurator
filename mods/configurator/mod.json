@@ -1,0 +1,10 @@
+{
+  "title": "Configurator",
+  "place": "bottom",
+  "size": 26,
+  "overlay": {
+    "kind": "dialog",
+    "width": 960,
+    "height": 680
+  }
+}

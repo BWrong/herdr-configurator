@@ -1,0 +1,3 @@
+# Written by gpui-shell when it loads a mod.
+mods/*/gpui-kit.d.ts
+mods/*/jsconfig.json
