@@ -763,24 +763,20 @@ test("commitOf refuses a response without a 40 hex commit", () => {
   assert.match(commitOf("[]").error, /JSON/i);
 });
 
-test("recording a source writes kind, origin, repo, ref, commit, per-file hashes and the times", () => {
+test("recording a source writes only what a reader uses: repo, ref, commit and per-file hashes", () => {
   const files = { "main.js": `sha256:${digest("a")}` };
   const entries = recordSource({}, { name: "better-config", repo: "BWrong/better-config", ref: "main", commit: HEX, files, now: 1794000000000 });
   assert.deepEqual(entries, {
     "better-config": {
-      kind: "mod",
-      origin: "third_party",
       repo: "BWrong/better-config",
       ref: "main",
       commit: HEX,
-      checkedAt: 1794000000000,
-      installedAt: 1794000000000,
       files,
     },
   });
 });
 
-test("recording again updates the row in place and keeps its install time", () => {
+test("recording again updates the row in place", () => {
   const first = recordSource(
     {},
     { name: "better-config", repo: "o/r", ref: "main", commit: HEX, files: { "main.js": "sha256:1" }, now: 100 },
@@ -794,8 +790,7 @@ test("recording again updates the row in place and keeps its install time", () =
     now: 500,
   });
   assert.deepEqual(Object.keys(second), ["better-config"]);
-  assert.equal(second["better-config"].installedAt, 100);
-  assert.equal(second["better-config"].checkedAt, 500);
+  assert.deepEqual(Object.keys(second["better-config"]), ["repo", "ref", "commit", "files"]);
   assert.equal(second["better-config"].ref, "v2");
   assert.equal(second["better-config"].commit, HEX2);
   assert.deepEqual(second["better-config"].files, { "mod.json": "sha256:2" });
@@ -1414,7 +1409,7 @@ test("a fresh install records the resolved commit and a hash per file in the led
     now: 1794000000000,
   });
   const row = entries["better-changes-copy"];
-  assert.equal(row.origin, "third_party");
+  assert.deepEqual(Object.keys(row), ["repo", "ref", "commit", "files"]);
   assert.equal(row.repo, "BWrong/better-changes");
   assert.equal(row.ref, "main");
   assert.equal(row.commit, HEX);

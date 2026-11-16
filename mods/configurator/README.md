@@ -36,7 +36,7 @@ so updating or uninstalling an entry never touches it:
 
 | File | What it holds |
 | --- | --- |
-| `ledger.json` | Provenance per entry: repository, ref, commit, last check, install time, and a `sha256:` hash per file. |
+| `ledger.json` | Provenance per entry: repository, ref, commit, last check, and a `sha256:` hash per file. |
 | `kept/<name>.json` | The entry's version and changed settings values, so an update does not lose them. |
 | `gallery.json` | The last successful gallery fetch: rows and the time they were fetched. |
 | `trash/<UTC time>/<name>/` | Folders moved by an uninstall, and files an update replaced. Recoverable by hand. |

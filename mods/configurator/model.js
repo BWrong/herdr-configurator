@@ -709,20 +709,11 @@ export function withCheckResults(entries, results = [], now = Date.now()) {
   return out;
 }
 
-// The entries with `name` recorded as a third-party mod at that repository, ref, commit and
-// per-file hashes. Recording again replaces the row and keeps the first install time.
-export function recordSource(entries, { name, repo, ref = "main", commit, files = {}, now = Date.now() } = {}) {
-  const previous = isObject(entries?.[name]) ? entries[name] : {};
-  const row = {
-    kind: "mod",
-    origin: "third_party",
-    repo,
-    ref,
-    commit,
-    checkedAt: now,
-    installedAt: typeof previous.installedAt === "number" ? previous.installedAt : now,
-    files,
-  };
+// The entries with `name` recorded at that repository, ref, commit and per-file hashes.
+// Only the fields a reader uses are written: a check records its own time and commit, so a
+// row that has never been checked carries neither a check time nor an install time.
+export function recordSource(entries, { name, repo, ref = "main", commit, files = {} } = {}) {
+  const row = { repo, ref, commit, files };
   return { ...(isObject(entries) ? entries : {}), [name]: row };
 }
 
