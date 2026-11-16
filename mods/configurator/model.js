@@ -1,6 +1,6 @@
 // model.js: the pure half of the Configurator — which entries exist, what each one's
-// Origin is, and which rows a typed filter keeps. No Herdr calls here, so `node --test`
-// runs it as it is.
+// Origin is, which rows a typed filter keeps, and what a GitHub topic search means. No
+// Herdr calls here, so `node --test` runs it as it is.
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
@@ -130,6 +130,93 @@ const firstString = (...values) => values.find((value) => typeof value === "stri
 export function sizeText(bytes) {
   const value = Number(bytes) || 0;
   return value < 1024 ? `${value} B` : `${(value / 1024).toFixed(1)} kB`;
+}
+
+// --- Gallery: the GitHub topic's repositories, paged, cached, refreshed. ---
+
+const GALLERY_PER_PAGE = 100;
+// GitHub's search exposes the first 1000 results only; a page past that answers with an
+// error instead of an empty list.
+const GALLERY_MAX_PAGES = 10;
+
+// The day a repository was last pushed, or "unknown" when GitHub gave no usable date.
+export function pushedText(value) {
+  const date = typeof value === "string" ? value.slice(0, 10) : "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "unknown";
+}
+
+// A search response (parsed or its JSON text) as the gallery sees it: how many results the
+// query has in total, and one row per repository with its stars, description and last push.
+// Order is GitHub's own; nothing is sorted or deduplicated here.
+export function galleryRowsOf(payload) {
+  let value = payload;
+  if (typeof payload === "string") {
+    try {
+      value = JSON.parse(payload);
+    } catch {
+      return { totalCount: 0, rows: [] };
+    }
+  }
+  const items = Array.isArray(value?.items) ? value.items : [];
+  return {
+    totalCount: Number.isFinite(value?.total_count) ? value.total_count : 0,
+    rows: items.filter(isObject).map((item) => ({
+      repository: typeof item.full_name === "string" ? item.full_name : "",
+      stars: Number(item.stargazers_count) || 0,
+      description: typeof item.description === "string" ? item.description : "",
+      pushedAt: pushedText(item.pushed_at),
+    })),
+  };
+}
+
+// The pages a query with `totalCount` results needs, 1-based, capped where GitHub stops.
+export function galleryPagePlan(totalCount, perPage = GALLERY_PER_PAGE) {
+  const count = Number(totalCount) || 0;
+  const pages = Math.min(GALLERY_MAX_PAGES, Math.ceil(count / perPage));
+  return Array.from({ length: pages }, (_unused, index) => index + 1);
+}
+
+// The cached gallery (`data/configurator/gallery.json`) as rows and the time they were
+// fetched; an absent or unusable cache is an empty gallery, never an error.
+export function galleryCacheOf(text) {
+  try {
+    const value = JSON.parse(text);
+    return {
+      fetchedAt: typeof value?.fetchedAt === "string" ? value.fetchedAt : null,
+      rows: Array.isArray(value?.rows) ? value.rows : [],
+    };
+  } catch {
+    return { fetchedAt: null, rows: [] };
+  }
+}
+
+// The cache file's text, kept as the shape galleryCacheOf reads back.
+export function galleryCacheText(cache) {
+  return `${JSON.stringify({ fetchedAt: cache?.fetchedAt ?? null, rows: cache?.rows ?? [] }, null, 2)}\n`;
+}
+
+// The responder's own error text: `message` verbatim when the body carries one, the body
+// itself when it is not JSON, and the status only when there is nothing else to show.
+export function errorTextOf(body, status = 0) {
+  let value = body;
+  if (typeof body === "string") {
+    try {
+      value = JSON.parse(body);
+    } catch {
+      const text = body.trim();
+      return text || (status ? `HTTP ${status}` : "Request failed");
+    }
+  }
+  const message = isObject(value) && typeof value.message === "string" ? value.message.trim() : "";
+  if (message) return message;
+  return status ? `HTTP ${status}` : "Request failed";
+}
+
+// What a refresh leaves the view with: rows and a fetch time on success, every previous row
+// and the failure's text when it failed. Offline-first means the failure never empties the list.
+export function refreshedGallery(cache, { rows, fetchedAt, error } = {}) {
+  if (error) return { fetchedAt: cache?.fetchedAt ?? null, rows: cache?.rows ?? [], error };
+  return { fetchedAt: fetchedAt ?? null, rows: rows ?? [], error: null };
 }
 
 // Everything the detail pane shows for one row: where it lives, where it came from (the
