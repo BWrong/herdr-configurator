@@ -1532,16 +1532,6 @@ export default class Configurator extends View {
     return this.writeLedger((entries) => withoutEntry(entries, name));
   }
 
-  // The hashes of one folder as the ledger stores them. gpui-shell writes gpui-kit.d.ts and
-  // jsconfig.json into every mod folder when it loads one (see .gitignore), so they are not
-  // what either side shipped.
-  async hashesIn(folder) {
-    const listing = await exec("/bin/sh", ["-c", 'cd "$1" && find . -type f -print0 | xargs -0 shasum -a 256', "sh", folder]);
-    const files = hashesOf(listing.stdout);
-    for (const generated of ["gpui-kit.d.ts", "jsconfig.json"]) delete files[generated];
-    return files;
-  }
-
   // The Update action, and its question. Only an entry with a recorded repository, ref and
   // hashes can be updated; the confirm panel appears only when a file differs from them.
   updateRow(t, detail) {
@@ -1640,7 +1630,7 @@ export default class Configurator extends View {
               .text_color(t.solid_foreground)
               .cursor_pointer()
               .on_click((_e, cx) => this.confirmUpdate(job, cx))
-              .child(this.updating ? "Updating…" : "Back up and overwrite"),
+              .child(this.updating ? "Updating…" : "Move to Trash and overwrite"),
           ),
       );
   }
@@ -1703,8 +1693,8 @@ export default class Configurator extends View {
       commit = head.stdout.trim();
       if ((await readTextFile(`${upstream}/mod.json`)) === null)
         return fail(`The repository no longer ships mods/${name}.`);
-      files = await this.hashesIn(upstream);
-      local = await this.hashesIn(`${appHome()}/mods/${name}`);
+      files = await this.hashFolder(upstream);
+      local = await this.hashFolder(`${appHome()}/mods/${name}`);
     } catch (error) {
       return fail(error?.message ?? String(error));
     }
@@ -1755,9 +1745,10 @@ export default class Configurator extends View {
     if (plan.blocked) return;
     const folder = `${appHome()}/mods/${job.name}`;
     const trashFolder = trashPath(job.name, { now: job.now, trash: `${appHome()}/data/configurator/trash` });
+    let moved = 0;
     try {
       if (plan.trash.length) await exec("/bin/sh", ["-c", 'mkdir -p "$1"', "sh", trashFolder]);
-      for (const name of plan.trash)
+      for (const name of plan.trash) {
         await exec("/bin/sh", [
           "-c",
           'mkdir -p "$(dirname "$2")" && mv "$1" "$2"',
@@ -1765,6 +1756,8 @@ export default class Configurator extends View {
           `${folder}/${name}`,
           `${trashFolder}/${name}`,
         ]);
+        moved += 1;
+      }
       for (const name of plan.writes)
         await exec("/bin/sh", [
           "-c",
@@ -1777,7 +1770,13 @@ export default class Configurator extends View {
       this.updating = false;
       this.updateJob = null;
       this.updateNote = null;
-      this.updateError = { name: job.name, text: `${error?.message ?? error} The clone is kept in ${job.folder}.` };
+      const trashed = moved
+        ? ` ${moved} ${moved === 1 ? "path" : "paths"} already moved to ${trashFolder}.`
+        : "";
+      this.updateError = {
+        name: job.name,
+        text: `${error?.message ?? error}${trashed} The clone is kept in ${job.folder}.`,
+      };
       return;
     }
     const failure = await this.writeLedger((entries) =>
@@ -1788,6 +1787,12 @@ export default class Configurator extends View {
       await exec("/bin/sh", ["-c", 'herdr-app check "$1"', "sh", folder]);
     } catch (error) {
       checkError = ` herdr-app check: ${error?.message ?? error}`;
+    }
+    // The update stands even if the cleanup stumbles; the report says so separately.
+    try {
+      await exec("rm", ["-rf", job.folder]);
+    } catch (error) {
+      checkError = `${checkError} The clone could not be removed: ${error?.message ?? error}.`;
     }
     const report = updateReportText({
       name: job.name,

@@ -108,22 +108,25 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   ledger write stores `checkedAt` and either `checkedCommit` or `checkedError`. The note
   counts how many moved, how many are up to date, and the first failure's text. No timer, no
   check on open.
-- **Update** — only for an entry whose ledger row has repository, ref and hashes. A shallow
+- **Update** — only for an entry whose ledger row has repository, ref and hashes; every other
+  Origin says why it has no update. A shallow
   `git clone --depth 1 --branch <ref>` into
   `data/configurator/temp/update-<name>-<UTC time>/`, compare the recorded, local and upstream
   hashes. If any local file differs from the ledger, a panel lists the edited files and asks:
-  `Cancel`, or `Back up and overwrite`. Then upstream's files are copied in (creating any
+  `Cancel`, or `Move to Trash and overwrite`. Then upstream's files are copied in (creating any
   directory they need), the files upstream no longer ships and the edited files being
   overwritten are moved to `data/configurator/trash/<UTC time>/<name>/` first, the ledger row
-  takes the new commit and hashes, and `herdr-app check <folder>` runs. The report says how
-  many files were added, replaced, restored and removed to the trash. The entry's
+  takes the new commit and hashes, and `herdr-app check <folder>` runs. The clone is removed
+  when all of that succeeded. The report says how many files were added, replaced, restored
+  and removed to the trash; a failure during the copies says how many paths had already
+  moved to the trash and where, and keeps the clone with its own text. The entry's
   `data/<name>/` state directory is never read or written.
 - **Uninstall** — a panel first gives the Reference scan: every `layouts/*.json` naming the
   mod, and every `keys.json` section `mod:<name>`. `Cancel`, or `Move to trash`: the folder
   moves to `data/configurator/trash/<UTC time>/<name>/` and only then is its ledger row
   dropped. A notification says where it went. Nothing is deleted. A cloned entry also carries
   "This entry is a copy; it never follows upstream." A shipped entry cannot be uninstalled.
-- **Record source** — for an unknown-origin entry: hash every file, resolve the ref's current
+- **Record provenance** — for an unknown-origin entry: hash every file, resolve the ref's current
   commit with one `GET /repos/{repo}/commits/{ref}`, and write the ledger row. The note names
   the short commit or the responder's error. The folder itself is not touched.
 - **Install** — on a gallery row: shallow `git clone --depth 1` of the default branch into
@@ -205,7 +208,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **The ledger dies only with `data/configurator/`.** Uninstalling the Configurator leaves it
   behind on purpose: it holds provenance for entries that outlive the dialog.
 - **Unknown origin is normal.** Anything hand-dropped into `mods/` has no provenance: it is
-  listed, configurable and uninstallable, but never checked or updated until `Record source`
+  listed, configurable and uninstallable, but never checked or updated until `Record provenance`
   links it to a repository.
 - **Tracking needs both repository and ref.** A ledger row missing either is not a check or
   update target.

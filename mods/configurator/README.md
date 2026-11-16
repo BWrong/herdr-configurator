@@ -20,7 +20,8 @@ This mod has no settings of its own; it edits the settings of the entries it lis
   nothing else. Failures show the responder's own error text; nothing polls or checks on open.
 - **Update** clones the recorded ref, compares the recorded, local and upstream hashes, and
   asks before overwriting an edited file. Only upstream's files are written; files it no
-  longer ships, and the files it replaces over an edit, move to the trash first.
+  longer ships, and the files it replaces over an edit, move to the trash first. The clone is
+  removed when the update succeeds, and a failed copy says how many paths already moved.
 - **Uninstall** shows the Reference scan, then moves the folder to the trash. Nothing is
   deleted. Shipped entries cannot be uninstalled; Herdr restores them on the next start.
 - **Gallery** lists repositories from GitHub's `herdr-mod` topic with stars, description and

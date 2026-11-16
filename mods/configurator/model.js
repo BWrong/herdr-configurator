@@ -464,8 +464,9 @@ const namesOf = (hashes) => (isObject(hashes) ? Object.keys(hashes).sort() : [])
 // upstream files the ledger has no hash for (`added`), which ledger files upstream no longer
 // ships (`removed`), the ones whose contents changed (`replaced`), the ones written back
 // even though upstream did not change them (`restored`), the unchanged ones, the upstream
-// paths whose bytes differ from what is on disk (`writes`), the edited files that must be
-// backed up before being written over (`backup`), and the dropped files still on disk
+// paths whose bytes differ from what is on disk (`writes`), the edited files an overwrite
+// moves to the trash before being written over (`editedReplaced`), and the dropped files
+// still on disk
 // (`toTrash`). Any local difference makes the entry edited: nothing is written until the
 // person confirms.
 export function compareUpdate({ recorded = {}, local = {}, upstream = {} } = {}) {
@@ -486,7 +487,7 @@ export function compareUpdate({ recorded = {}, local = {}, upstream = {} } = {})
     (name) => !Object.hasOwn(onDisk, name) || onDisk[name] !== incoming[name],
   );
   const restored = writes.filter((name) => !added.includes(name) && !replaced.includes(name));
-  const backup = edited.filter(
+  const editedReplaced = edited.filter(
     (name) => Object.hasOwn(onDisk, name) && writes.includes(name) && Object.hasOwn(incoming, name),
   );
   const toTrash = removed.filter((name) => Object.hasOwn(onDisk, name));
@@ -499,20 +500,20 @@ export function compareUpdate({ recorded = {}, local = {}, upstream = {} } = {})
     restored,
     unchanged,
     writes,
-    backup,
+    editedReplaced,
     toTrash,
   };
 }
 
 // What the update does with the files: the upstream paths to write and the ones to move into
 // the trash first. An edited entry writes and trashes nothing until `overwrite` is set; then
-// every edited file upstream still ships is backed up before it is replaced.
+// every edited file upstream still ships moves to the trash before it is replaced.
 export function writePlan(comparison, { overwrite = false } = {}) {
   const compared = isObject(comparison) ? comparison : {};
   if (compared.status === "edited" && !overwrite) return { blocked: true, writes: [], trash: [] };
   const trash = [...(Array.isArray(compared.toTrash) ? compared.toTrash : [])];
   if (overwrite)
-    for (const name of Array.isArray(compared.backup) ? compared.backup : [])
+    for (const name of Array.isArray(compared.editedReplaced) ? compared.editedReplaced : [])
       if (!trash.includes(name)) trash.push(name);
   return { blocked: false, writes: [...(Array.isArray(compared.writes) ? compared.writes : [])], trash: trash.sort() };
 }
@@ -534,7 +535,7 @@ export function updateReportText({ name, commit, added = [], replaced = [], rest
 // The question an edited entry asks first, listing every file that differs from the ledger.
 export function updatePromptText(name, edited = []) {
   const count = `${edited.length} file${edited.length === 1 ? "" : "s"}`;
-  return `${name} has ${count} edited since install (${edited.join(", ")}). Back up and overwrite, or cancel?`;
+  return `${name} has ${count} edited since install (${edited.join(", ")}). Move to Trash and overwrite, or cancel?`;
 }
 
 // The ledger row an update writes: the installed commit and hashes, the comparison time, and
@@ -678,10 +679,11 @@ export function checkTargets(rows, ledger) {
   return targets;
 }
 
-// What the ledger's last comparison says about an entry: `moved` when upstream resolved to the
-// same commit, `current` when it resolved to what is installed, `failed` when the lookup
-// brought an error instead, and `unchecked` when nothing was resolved yet. An error always
-// wins: a failed lookup never reads as up to date. A short installed commit compares by prefix.
+// What the ledger's last comparison says about an entry: `current` when upstream resolved to
+// the same commit as what is installed, `moved` when it resolved to a different one, `failed`
+// when the lookup brought an error instead, and `unchecked` when nothing was resolved yet. An
+// error always wins: a failed lookup never reads as up to date. A short installed commit
+// compares by prefix.
 export function checkStateOf(recorded) {
   if (!isObject(recorded)) return "unchecked";
   if (typeof recorded.checkedError === "string" && recorded.checkedError.trim()) return "failed";

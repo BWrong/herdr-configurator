@@ -1148,11 +1148,11 @@ test("a clean entry compares the ledger, local and upstream hashes file by file"
   assert.deepEqual(comparison.restored, []);
   assert.deepEqual(comparison.unchanged, ["mod.json"]);
   assert.deepEqual(comparison.writes, ["main.js"]);
-  assert.deepEqual(comparison.backup, []);
+  assert.deepEqual(comparison.editedReplaced, []);
   assert.deepEqual(comparison.toTrash, []);
 });
 
-test("a file edited after install makes the whole entry edited and lists it for a backup", () => {
+test("a file edited after install makes the whole entry edited and lists it for the trash", () => {
   const comparison = compareUpdate({
     recorded: { "main.js": sha("a"), "mod.json": sha("b") },
     local: { "main.js": sha("d"), "mod.json": sha("b") },
@@ -1161,7 +1161,7 @@ test("a file edited after install makes the whole entry edited and lists it for 
   assert.equal(comparison.status, "edited");
   assert.deepEqual(comparison.edited, ["main.js"]);
   assert.deepEqual(comparison.writes, ["main.js"]);
-  assert.deepEqual(comparison.backup, ["main.js"]);
+  assert.deepEqual(comparison.editedReplaced, ["main.js"]);
   assert.deepEqual(comparison.replaced, ["main.js"]);
 });
 
@@ -1201,7 +1201,7 @@ test("a file deleted from disk counts as edited and is restored from upstream", 
   assert.deepEqual(comparison.writes, ["main.js"]);
   assert.deepEqual(comparison.restored, ["main.js"]);
   assert.deepEqual(comparison.replaced, []);
-  assert.deepEqual(comparison.backup, []);
+  assert.deepEqual(comparison.editedReplaced, []);
 });
 
 test("a file the person added by hand counts as edited and is never trashed or overwritten", () => {
@@ -1213,7 +1213,7 @@ test("a file the person added by hand counts as edited and is never trashed or o
   assert.equal(comparison.status, "edited");
   assert.deepEqual(comparison.edited, ["notes.txt"]);
   assert.deepEqual(comparison.writes, []);
-  assert.deepEqual(comparison.backup, []);
+  assert.deepEqual(comparison.editedReplaced, []);
   assert.deepEqual(comparison.toTrash, []);
 });
 
@@ -1228,7 +1228,7 @@ test("a file edited and dropped upstream is edited, removed and trashed, with no
   assert.deepEqual(comparison.removed, ["old.js"]);
   assert.deepEqual(comparison.toTrash, ["old.js"]);
   assert.deepEqual(comparison.writes, []);
-  assert.deepEqual(comparison.backup, []);
+  assert.deepEqual(comparison.editedReplaced, []);
 });
 
 test("the comparison reads absent or unusable hashes as an empty side, never as an error", () => {
@@ -1262,7 +1262,7 @@ test("a clean plan writes the upstream files and trashes the dropped ones", () =
   });
 });
 
-test("an overwrite backs the edited file up before writing over it, once per path", () => {
+test("an overwrite moves the edited file to the trash before writing over it, once per path", () => {
   const comparison = compareUpdate({
     recorded: { "main.js": sha("a"), "old.js": sha("b") },
     local: { "main.js": sha("d"), "old.js": sha("e") },
@@ -1311,11 +1311,11 @@ test("the report counts added, replaced, restored and removed files in one line"
 test("the prompt says which files changed and offers the two answers", () => {
   assert.equal(
     updatePromptText("better-changes", ["main.js", "mod.json"]),
-    "better-changes has 2 files edited since install (main.js, mod.json). Back up and overwrite, or cancel?",
+    "better-changes has 2 files edited since install (main.js, mod.json). Move to Trash and overwrite, or cancel?",
   );
   assert.equal(
     updatePromptText("x", ["notes.txt"]),
-    "x has 1 file edited since install (notes.txt). Back up and overwrite, or cancel?",
+    "x has 1 file edited since install (notes.txt). Move to Trash and overwrite, or cancel?",
   );
 });
 
