@@ -53,6 +53,14 @@ import {
   uninstallOf,
   withoutEntry,
   refusalOf,
+  trashPath,
+  updateTargetOf,
+  compareUpdate,
+  writePlan,
+  updateReportText,
+  updatePromptText,
+  updatedRow,
+  updateTempPath,
 } from "./model.js";
 
 const GALLERY_TOPIC_URL = "https://api.github.com/search/repositories?q=topic:herdr-mod&per_page=100&page=";
@@ -102,6 +110,10 @@ export default class Configurator extends View {
     this.uninstall = null;
     this.uninstallError = "";
     this.uninstalling = false;
+    this.updateJob = null;
+    this.updateNote = null;
+    this.updateError = null;
+    this.updating = false;
     if (this.overlay) {
       this.input = InputState.new({ placeholder: "Filter entries…" });
       this.input.on("change", (_e, cx) => {
@@ -902,6 +914,7 @@ export default class Configurator extends View {
         el.child(div().text_size(11).text_color(t.ansi1).child(`Ledger: ${this.ledgerProblem}`)),
       )
       .child(div().flex_1())
+      .child(this.updateRow(t, detail))
       .child(this.uninstallRow(t, detail));
   }
 
@@ -1055,6 +1068,275 @@ export default class Configurator extends View {
   // re-reading the file on every attempt. Only called after the folder actually moved.
   async removeLedgerRow(name) {
     return this.writeLedger((entries) => withoutEntry(entries, name));
+  }
+
+  // The hashes of one folder as the ledger stores them. gpui-shell writes gpui-kit.d.ts and
+  // jsconfig.json into every mod folder when it loads one (see .gitignore), so they are not
+  // what either side shipped.
+  async hashesIn(folder) {
+    const listing = await exec("/bin/sh", ["-c", 'cd "$1" && find . -type f -print0 | xargs -0 shasum -a 256', "sh", folder]);
+    const files = hashesOf(listing.stdout);
+    for (const generated of ["gpui-kit.d.ts", "jsconfig.json"]) delete files[generated];
+    return files;
+  }
+
+  // The Update action, and its question. Only an entry with a recorded repository, ref and
+  // hashes can be updated; the confirm panel appears only when a file differs from them.
+  updateRow(t, detail) {
+    const job = this.updateJob?.name === detail.name ? this.updateJob : null;
+    const note = this.updateNote?.name === detail.name ? this.updateNote.text : "";
+    const error = this.updateError?.name === detail.name ? this.updateError.text : "";
+    const target = updateTargetOf(this.ledger[detail.name]);
+    const trigger = div()
+      .id(`configurator-update-${detail.name}`)
+      .flex_none()
+      .px(10)
+      .py(3)
+      .rounded(6)
+      .border_1()
+      .border_color(t.border)
+      .bg(t.background)
+      .text_size(12)
+      .text_color(this.updating ? t.dim : t.foreground)
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .on_click((_e, cx) => this.startUpdate(detail, cx))
+      .child(this.updating ? "Updating…" : "Update");
+    return h_flex()
+      .w_full()
+      .gap(8)
+      .items_center()
+      .child(div().flex_1().min_w(0).text_size(11).text_color(error ? t.blocked : t.dim).child(error || note))
+      .when(Boolean(target), (el) =>
+        el.child(
+          Popup.new(`configurator-update-popup-${detail.name}`, trigger)
+            .anchor("top_right")
+            .when(Boolean(job), (popup) => popup.content(this.updatePanel(t, job))),
+        ),
+      );
+  }
+
+  // The question: which files differ, where they go, and the two answers. Nothing has been
+  // written at this point; Cancel closes the panel and leaves the folder byte-identical.
+  updatePanel(t, job) {
+    return v_flex()
+      .id("configurator-update-panel")
+      .w(360)
+      .p(12)
+      .gap(6)
+      .rounded(8)
+      .border_1()
+      .border_color(t.border)
+      .bg(t.popover)
+      .child(div().text_size(13).text_color(t.foreground).child(`Update ${job.name}?`))
+      .child(
+        div()
+          .line_height("15px")
+          .text_size(11)
+          .text_color(t.muted)
+          .child(updatePromptText(job.name, job.comparison.edited)),
+      )
+      .child(
+        div()
+          .line_height("15px")
+          .text_size(11)
+          .text_color(t.dim)
+          .child(
+            `Upstream ${job.target.repo} @ ${job.commit ? job.commit.slice(0, 7) : job.target.ref}. The edited files are moved to the trash before they are replaced.`,
+          ),
+      )
+      .child(
+        h_flex()
+          .justify_end()
+          .gap(8)
+          .child(
+            div()
+              .id("configurator-update-cancel")
+              .px(10)
+              .py(3)
+              .rounded(6)
+              .border_1()
+              .border_color(t.border)
+              .text_size(12)
+              .text_color(t.foreground)
+              .cursor_pointer()
+              .hover((s) => s.bg(t.hover))
+              .on_click((_e, cx) => this.cancelUpdate(cx))
+              .child("Cancel"),
+          )
+          .child(
+            div()
+              .id("configurator-update-confirm")
+              .px(10)
+              .py(3)
+              .rounded(6)
+              .bg(t.solid)
+              .text_size(12)
+              .text_color(t.solid_foreground)
+              .cursor_pointer()
+              .on_click((_e, cx) => this.confirmUpdate(job, cx))
+              .child(this.updating ? "Updating…" : "Back up and overwrite"),
+          ),
+      );
+  }
+
+  startUpdate(detail, cx) {
+    if (checking() || this.updating || !this.overlay) return;
+    this.updateJob = null;
+    this.updateNote = null;
+    this.updateError = null;
+    const target = updateTargetOf(this.ledger[detail.name]);
+    if (this.ledgerProblem) {
+      this.updateError = { name: detail.name, text: `Ledger: ${this.ledgerProblem}` };
+      cx.notify();
+      return;
+    }
+    if (!target) {
+      this.updateError = { name: detail.name, text: "This entry has no recorded repository, ref and hashes." };
+      cx.notify();
+      return;
+    }
+    this.updating = true;
+    this.updateNote = { name: detail.name, text: "Cloning…" };
+    cx.notify();
+    cx.spawn(async (cx) => {
+      await this.runUpdate(detail.name, target, cx);
+      cx.notify();
+    });
+  }
+
+  // One shallow clone of the recorded ref into the Configurator's own temp folder, then the
+  // three hashes of every file. A failure reports the program's own text and keeps the
+  // clone where it is, with nothing in the entry's folder touched.
+  async runUpdate(name, target, cx) {
+    const now = Date.now();
+    const folder = updateTempPath(name, { now, temp: `${appHome()}/data/configurator/temp` });
+    const upstream = `${folder}/mods/${name}`;
+    const fail = (error) => {
+      this.updating = false;
+      this.updateNote = null;
+      this.updateError = { name, text: `${error} The clone is kept in ${folder}.` };
+    };
+    try {
+      await exec("git", [
+        "clone",
+        "--depth",
+        "1",
+        "--branch",
+        target.ref,
+        `https://github.com/${target.repo}.git`,
+        folder,
+      ]);
+    } catch (error) {
+      return fail(error?.message ?? String(error));
+    }
+    let commit = "";
+    let files = null;
+    let local = null;
+    try {
+      const head = await exec("git", ["-C", folder, "rev-parse", "HEAD"]);
+      commit = head.stdout.trim();
+      if ((await readTextFile(`${upstream}/mod.json`)) === null)
+        return fail(`The repository no longer ships mods/${name}.`);
+      files = await this.hashesIn(upstream);
+      local = await this.hashesIn(`${appHome()}/mods/${name}`);
+    } catch (error) {
+      return fail(error?.message ?? String(error));
+    }
+    const job = {
+      name,
+      target,
+      commit,
+      folder,
+      now,
+      files,
+      comparison: compareUpdate({ recorded: target.files, local, upstream: files }),
+    };
+    if (writePlan(job.comparison).blocked) {
+      this.updating = false;
+      this.updateNote = null;
+      this.updateJob = job;
+      return;
+    }
+    await this.finishUpdate(job, false, cx);
+  }
+
+  cancelUpdate(cx) {
+    if (this.updating) return;
+    this.updateJob = null;
+    this.updateNote = null;
+    this.updateError = null;
+    cx.notify();
+  }
+
+  confirmUpdate(job, cx) {
+    if (checking() || this.updating) return;
+    this.updating = true;
+    this.updateError = null;
+    this.updateNote = { name: job.name, text: "Updating…" };
+    cx.notify();
+    cx.spawn(async (cx) => {
+      await this.finishUpdate(job, true, cx);
+      cx.notify();
+    });
+  }
+
+  // The write plan, in order: the files that leave the folder go to the trash, upstream's
+  // files are copied in, the ledger row takes the new commit and hashes, and the mod is
+  // checked afterwards. Nothing else in the entry, and nothing in its state folder, is read
+  // or written.
+  async finishUpdate(job, overwrite, cx) {
+    const plan = writePlan(job.comparison, { overwrite });
+    if (plan.blocked) return;
+    const folder = `${appHome()}/mods/${job.name}`;
+    const trashFolder = trashPath(job.name, { now: job.now, trash: `${appHome()}/data/configurator/trash` });
+    try {
+      if (plan.trash.length) await exec("/bin/sh", ["-c", 'mkdir -p "$1"', "sh", trashFolder]);
+      for (const name of plan.trash)
+        await exec("/bin/sh", [
+          "-c",
+          'mkdir -p "$(dirname "$2")" && mv "$1" "$2"',
+          "sh",
+          `${folder}/${name}`,
+          `${trashFolder}/${name}`,
+        ]);
+      for (const name of plan.writes)
+        await exec("/bin/sh", [
+          "-c",
+          'mkdir -p "$(dirname "$2")" && cp "$1" "$2"',
+          "sh",
+          `${job.folder}/mods/${job.name}/${name}`,
+          `${folder}/${name}`,
+        ]);
+    } catch (error) {
+      this.updating = false;
+      this.updateJob = null;
+      this.updateNote = null;
+      this.updateError = { name: job.name, text: `${error?.message ?? error} The clone is kept in ${job.folder}.` };
+      return;
+    }
+    const failure = await this.writeLedger((entries) =>
+      updatedRow(entries, { name: job.name, commit: job.commit, files: job.files }),
+    );
+    let checkError = "";
+    try {
+      await exec("/bin/sh", ["-c", 'herdr-app check "$1"', "sh", folder]);
+    } catch (error) {
+      checkError = ` herdr-app check: ${error?.message ?? error}`;
+    }
+    const report = updateReportText({
+      name: job.name,
+      commit: job.commit,
+      added: job.comparison.added,
+      replaced: job.comparison.replaced,
+      restored: job.comparison.restored,
+      removed: job.comparison.toTrash,
+    });
+    this.updating = false;
+    this.updateJob = null;
+    this.updateError = null;
+    this.updateNote = { name: job.name, text: `${failure ? `${failure} ` : ""}${report}${checkError}` };
+    await this.load();
   }
 
   // Unknown origin: the repository and ref to record, and the action that records them.

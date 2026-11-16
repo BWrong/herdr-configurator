@@ -43,6 +43,13 @@ import {
   confirmScanText,
   uninstallOf,
   withoutEntry,
+  updateTargetOf,
+  compareUpdate,
+  writePlan,
+  updateReportText,
+  updatePromptText,
+  updatedRow,
+  updateTempPath,
 } from "./model.js";
 
 const installed = { help: { "main.js": "hash" } };
@@ -1091,4 +1098,258 @@ test("the detail pane of an entry never checked has no time and no state of cons
   assert.equal(detail.lastChecked, null);
   assert.equal(detail.checkState, "unchecked");
   assert.equal(detail.checkError, null);
+});
+
+// --- Update: three hashes per file, the plan they produce, and the words the dialog uses.
+
+const sha = (digit) => `sha256:${digest(digit)}`;
+
+test("a clean entry compares the ledger, local and upstream hashes file by file", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a"), "mod.json": sha("b") },
+    local: { "main.js": sha("a"), "mod.json": sha("b") },
+    upstream: { "main.js": sha("c"), "mod.json": sha("b") },
+  });
+  assert.equal(comparison.status, "clean");
+  assert.deepEqual(comparison.edited, []);
+  assert.deepEqual(comparison.added, []);
+  assert.deepEqual(comparison.removed, []);
+  assert.deepEqual(comparison.replaced, ["main.js"]);
+  assert.deepEqual(comparison.restored, []);
+  assert.deepEqual(comparison.unchanged, ["mod.json"]);
+  assert.deepEqual(comparison.writes, ["main.js"]);
+  assert.deepEqual(comparison.backup, []);
+  assert.deepEqual(comparison.toTrash, []);
+});
+
+test("a file edited after install makes the whole entry edited and lists it for a backup", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a"), "mod.json": sha("b") },
+    local: { "main.js": sha("d"), "mod.json": sha("b") },
+    upstream: { "main.js": sha("c"), "mod.json": sha("b") },
+  });
+  assert.equal(comparison.status, "edited");
+  assert.deepEqual(comparison.edited, ["main.js"]);
+  assert.deepEqual(comparison.writes, ["main.js"]);
+  assert.deepEqual(comparison.backup, ["main.js"]);
+  assert.deepEqual(comparison.replaced, ["main.js"]);
+});
+
+test("files upstream no longer ships are removed, and the ones still on disk are trashed", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a"), "old.js": sha("b") },
+    local: { "main.js": sha("a"), "old.js": sha("b") },
+    upstream: { "main.js": sha("c") },
+  });
+  assert.equal(comparison.status, "clean");
+  assert.deepEqual(comparison.removed, ["old.js"]);
+  assert.deepEqual(comparison.toTrash, ["old.js"]);
+  assert.deepEqual(comparison.writes, ["main.js"]);
+  assert.deepEqual(comparison.replaced, ["main.js"]);
+});
+
+test("files upstream added are written, and a ledger file already gone needs no trash", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a"), "gone.js": sha("b") },
+    local: { "main.js": sha("a") },
+    upstream: { "main.js": sha("a"), "icons/new.svg": sha("c") },
+  });
+  assert.deepEqual(comparison.added, ["icons/new.svg"]);
+  assert.deepEqual(comparison.writes, ["icons/new.svg"]);
+  assert.deepEqual(comparison.removed, ["gone.js"]);
+  assert.deepEqual(comparison.toTrash, []);
+});
+
+test("a file deleted from disk counts as edited and is restored from upstream", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a"), "mod.json": sha("b") },
+    local: { "mod.json": sha("b") },
+    upstream: { "main.js": sha("a"), "mod.json": sha("b") },
+  });
+  assert.equal(comparison.status, "edited");
+  assert.deepEqual(comparison.edited, ["main.js"]);
+  assert.deepEqual(comparison.writes, ["main.js"]);
+  assert.deepEqual(comparison.restored, ["main.js"]);
+  assert.deepEqual(comparison.replaced, []);
+  assert.deepEqual(comparison.backup, []);
+});
+
+test("a file the person added by hand counts as edited and is never trashed or overwritten", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a") },
+    local: { "main.js": sha("a"), "notes.txt": sha("d") },
+    upstream: { "main.js": sha("a") },
+  });
+  assert.equal(comparison.status, "edited");
+  assert.deepEqual(comparison.edited, ["notes.txt"]);
+  assert.deepEqual(comparison.writes, []);
+  assert.deepEqual(comparison.backup, []);
+  assert.deepEqual(comparison.toTrash, []);
+});
+
+test("a file edited and dropped upstream is edited, removed and trashed, with no backup", () => {
+  const comparison = compareUpdate({
+    recorded: { "old.js": sha("a") },
+    local: { "old.js": sha("d") },
+    upstream: {},
+  });
+  assert.equal(comparison.status, "edited");
+  assert.deepEqual(comparison.edited, ["old.js"]);
+  assert.deepEqual(comparison.removed, ["old.js"]);
+  assert.deepEqual(comparison.toTrash, ["old.js"]);
+  assert.deepEqual(comparison.writes, []);
+  assert.deepEqual(comparison.backup, []);
+});
+
+test("the comparison reads absent or unusable hashes as an empty side, never as an error", () => {
+  const comparison = compareUpdate({});
+  assert.equal(comparison.status, "clean");
+  assert.deepEqual(comparison.writes, []);
+  assert.deepEqual(compareUpdate(undefined).removed, []);
+  assert.deepEqual(compareUpdate({ recorded: null, local: {}, upstream: null }), comparison);
+});
+
+test("a plan for an edited entry writes and trashes nothing until the person confirms", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a") },
+    local: { "main.js": sha("d") },
+    upstream: { "main.js": sha("c") },
+  });
+  assert.deepEqual(writePlan(comparison), { blocked: true, writes: [], trash: [] });
+  assert.deepEqual(writePlan(comparison, { overwrite: false }), { blocked: true, writes: [], trash: [] });
+});
+
+test("a clean plan writes the upstream files and trashes the dropped ones", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a"), "old.js": sha("b") },
+    local: { "main.js": sha("a"), "old.js": sha("b") },
+    upstream: { "main.js": sha("c"), "new.js": sha("d") },
+  });
+  assert.deepEqual(writePlan(comparison), {
+    blocked: false,
+    writes: ["main.js", "new.js"],
+    trash: ["old.js"],
+  });
+});
+
+test("an overwrite backs the edited file up before writing over it, once per path", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a"), "old.js": sha("b") },
+    local: { "main.js": sha("d"), "old.js": sha("e") },
+    upstream: { "main.js": sha("c") },
+  });
+  assert.deepEqual(writePlan(comparison, { overwrite: true }), {
+    blocked: false,
+    writes: ["main.js"],
+    trash: ["main.js", "old.js"],
+  });
+});
+
+test("an overwrite leaves an edited file upstream does not ship in place", () => {
+  const comparison = compareUpdate({
+    recorded: { "main.js": sha("a") },
+    local: { "main.js": sha("a"), "notes.txt": sha("d") },
+    upstream: { "main.js": sha("a") },
+  });
+  assert.deepEqual(writePlan(comparison, { overwrite: true }), { blocked: false, writes: [], trash: [] });
+});
+
+test("the report counts added, replaced, restored and removed files in one line", () => {
+  assert.equal(
+    updateReportText({
+      name: "better-changes",
+      commit: HEX,
+      added: ["new.js"],
+      replaced: ["main.js", "mod.json"],
+      restored: [],
+      removed: ["old.js"],
+    }),
+    "Updated better-changes @ abcdef1: 1 file added, 2 files replaced, 1 file removed to the trash.",
+  );
+  assert.equal(
+    updateReportText({ name: "x", commit: HEX, restored: ["main.js"] }),
+    "Updated x @ abcdef1: 1 file restored.",
+  );
+  assert.equal(updateReportText({ name: "x", commit: HEX }), "Updated x @ abcdef1: nothing changed.");
+  assert.equal(updateReportText({ name: "x" }), "Updated x: nothing changed.");
+  assert.equal(
+    updateReportText({ name: "x", commit: HEX, removed: ["a", "b"] }),
+    "Updated x @ abcdef1: 2 files removed to the trash.",
+  );
+});
+
+test("the prompt says which files changed and offers the two answers", () => {
+  assert.equal(
+    updatePromptText("better-changes", ["main.js", "mod.json"]),
+    "better-changes has 2 files edited since install (main.js, mod.json). Back up and overwrite, or cancel?",
+  );
+  assert.equal(
+    updatePromptText("x", ["notes.txt"]),
+    "x has 1 file edited since install (notes.txt). Back up and overwrite, or cancel?",
+  );
+});
+
+test("only an entry with a recorded repository, ref and hashes can be updated", () => {
+  assert.deepEqual(updateTargetOf({ repo: "o/r", ref: "main", commit: HEX, files: { "a.js": sha("a") } }), {
+    repo: "o/r",
+    ref: "main",
+    commit: HEX,
+    files: { "a.js": sha("a") },
+  });
+  assert.equal(updateTargetOf({ repository: "o/r", ref: "main", files: {} }).repo, "o/r");
+  assert.equal(updateTargetOf({ repo: "o/r", ref: "main", commit: HEX }), null);
+  assert.equal(updateTargetOf({ repo: "o/r", commit: HEX, files: {} }), null);
+  assert.equal(updateTargetOf({ ref: "main", files: {} }), null);
+  assert.equal(updateTargetOf({ repo: "o/r", ref: "main", files: "nope" }), null);
+  assert.equal(updateTargetOf(null), null);
+  assert.equal(updateTargetOf({ repo: "o/r", ref: "main", files: {} }).commit, null);
+});
+
+test("an updated ledger row carries the new commit and hashes, and keeps its install time", () => {
+  const entries = {
+    x: {
+      kind: "mod",
+      origin: "third_party",
+      repo: "o/r",
+      ref: "main",
+      commit: HEX,
+      checkedAt: 100,
+      checkedCommit: HEX,
+      checkedError: "API rate limit exceeded for 203.0.113.7.",
+      installedAt: 100,
+      files: { "old.js": sha("a") },
+    },
+    other: { repo: "a/b" },
+  };
+  const frozen = JSON.parse(JSON.stringify(entries));
+  const next = updatedRow(entries, { name: "x", commit: HEX2, files: { "main.js": sha("b") }, now: 600 });
+  assert.deepEqual(next.x, {
+    kind: "mod",
+    origin: "third_party",
+    repo: "o/r",
+    ref: "main",
+    commit: HEX2,
+    checkedAt: 600,
+    checkedCommit: HEX2,
+    installedAt: 100,
+    files: { "main.js": sha("b") },
+  });
+  assert.deepEqual(next.other, entries.other);
+  assert.deepEqual(entries, frozen);
+  assert.equal(checkStateOf(next.x), "current");
+});
+
+test("an update for a name the ledger does not hold adds no row, and needs a commit", () => {
+  assert.deepEqual(updatedRow({}, { name: "ghost", commit: HEX2, files: {} }), {});
+  const entries = { x: { repo: "o/r", ref: "main", commit: HEX } };
+  assert.deepEqual(updatedRow(entries, { name: "x", files: {} }), entries);
+  assert.deepEqual(updatedRow({ x: { repo: "o/r" } }, { name: "x", commit: "" }), { x: { repo: "o/r" } });
+});
+
+test("an update clones into its own temp folder under the Configurator's state", () => {
+  assert.equal(
+    updateTempPath("better-changes", { now: 1794844800000 }),
+    "data/configurator/temp/update-better-changes-2026-11-16T16-00-00Z",
+  );
+  assert.equal(updateTempPath("x", { now: 1794844800000, temp: "/tmp/here" }), "/tmp/here/update-x-2026-11-16T16-00-00Z");
 });
