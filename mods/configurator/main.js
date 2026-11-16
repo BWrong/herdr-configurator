@@ -54,6 +54,10 @@ import {
   modFolderOf,
   declinedInstallText,
   installedText,
+  keysOfferOf,
+  keysFragmentText,
+  keyBindingLine,
+  keyConflictText,
   uninstallOf,
   withoutEntry,
   refusalOf,
@@ -105,6 +109,8 @@ export default class Configurator extends View {
     this.forms = {};
     this.openSelect = null;
     this.hoveredField = null;
+    this.keyOffers = {};
+    this.keyPanel = null;
     this.uninstall = null;
     this.uninstallError = "";
     this.uninstalling = false;
@@ -165,7 +171,8 @@ export default class Configurator extends View {
     if (!row) return null;
     const entry = this.entries.find((e) => e.name === name);
     const listing = await exec("/bin/sh", ["-c", 'cd "$1" && ls -lR 2>/dev/null', "sh", `${appHome()}/mods/${name}`]);
-    return detailOf(row, {
+    const localKeys = await readTextFile(`${appHome()}/mods/${name}/keys.json`);
+    const detail = detailOf(row, {
       folder: `mods/${name}`,
       manifest: asObject(entry?.modJson),
       ledger: this.ledger,
@@ -173,6 +180,10 @@ export default class Configurator extends View {
       layouts: this.layoutFiles,
       keys: this.keys,
     });
+    detail.keysAvailable =
+      detail.origin === "third_party" &&
+      ((typeof localKeys === "string" && localKeys.trim() !== "") || Boolean(detail.repo));
+    return detail;
   }
 
   galleryPath() {
@@ -590,7 +601,7 @@ export default class Configurator extends View {
     try {
       await this.load();
     } catch {}
-    return { installed: { name: folder, folder, repo, commit: clone.commit } };
+    return { installed: { name: folder, folder, repo, ref: clone.ref || "main", commit: clone.commit } };
   }
 
   // The gallery row's Install action. One at a time, never during a check run, and the row
@@ -615,9 +626,272 @@ export default class Configurator extends View {
       text: result?.error
         ? `${result.error}${result.temp ? ` The clone is kept at ${result.temp}.` : ""}`
         : installedText(result.installed),
+      keys: null,
+      keysError: "",
     };
-    // Ticket #11 appends the repository's non-conflicting key bindings to this line.
+    if (!result?.error && result?.installed) {
+      const gathered = await this.keyBindingsFor(result.installed.folder, {
+        repo,
+        ref: result.installed.ref,
+      });
+      this.installNote.keys = gathered.offer ?? null;
+      this.installNote.keysError = gathered.error ?? "";
+    }
     cx.notify();
+  }
+
+  // The bindings a third-party entry ships: its installed folder's keys.json first, then —
+  // only when a repository is recorded — the repository's own keys.json at its ref. The
+  // person's current bindings decide the split. Nothing runs under `herdr-app check`, and
+  // no keys.json is ever written.
+  async keyBindingsFor(name, { repo = null, ref = null } = {}) {
+    if (checking()) return { offer: null };
+    const documents = [];
+    const local = await readTextFile(`${appHome()}/mods/${name}/keys.json`);
+    if (typeof local === "string" && local.trim()) {
+      documents.push({ source: "installed folder", text: local });
+    }
+    if (!documents.length && repo) {
+      const refPath = String(ref || "HEAD")
+        .split("/")
+        .filter(Boolean)
+        .map(encodeURIComponent)
+        .join("/");
+      try {
+        const response = await fetch(`https://raw.githubusercontent.com/${repo}/${refPath}/keys.json`);
+        if (response.ok) {
+          const body = await response.text();
+          if (body.trim()) documents.push({ source: `${repo} keys.json`, text: body });
+        } else if (response.status !== 404) {
+          return { error: errorTextOf(await response.text(), response.status) };
+        }
+      } catch (error) {
+        return { error: error?.message ?? String(error) };
+      }
+    }
+    return { offer: keysOfferOf(documents, this.keys) };
+  }
+
+  // The selected entry's bindings, asked for. The popup opens at once and fills in when the
+  // read (or the one upstream request) answers.
+  openKeys(detail, cx) {
+    if (checking() || !detail.keysAvailable || this.keyOffers[detail.name]?.loading) return;
+    const recorded = this.ledger?.[detail.name];
+    const ref = typeof recorded?.ref === "string" && recorded.ref ? recorded.ref : null;
+    this.keyPanel = detail.name;
+    this.keyOffers[detail.name] = { loading: true, offer: null, error: "" };
+    cx.notify();
+    cx.spawn(async (cx) => {
+      const gathered = await this.keyBindingsFor(detail.name, { repo: detail.repo, ref });
+      this.keyOffers[detail.name] = {
+        loading: false,
+        offer: gathered.offer ?? null,
+        error: gathered.error ?? "",
+      };
+      cx.notify();
+    });
+  }
+
+  closeKeys(cx) {
+    this.keyPanel = null;
+    cx.notify();
+  }
+
+  // The on-demand trigger for the selected entry. Entries that ship no bindings anywhere
+  // (no folder file, no recorded repository) get nothing extra.
+  keysTrigger(t, detail) {
+    if (!detail.keysAvailable) return div();
+    const content = this.keyPanel === detail.name;
+    const trigger = div()
+      .id(`configurator-keys-${detail.name}`)
+      .flex_none()
+      .px(10)
+      .py(3)
+      .rounded(6)
+      .border_1()
+      .border_color(t.border)
+      .bg(t.background)
+      .text_size(12)
+      .text_color(t.foreground)
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .on_click((_e, cx) => this.openKeys(detail, cx))
+      .child("Key bindings");
+    return Popup.new(`configurator-keys-popup-${detail.name}`, trigger)
+      .anchor("top_right")
+      .when(content, (el) => el.content(this.keyPanelView(t, detail)));
+  }
+
+  keyPanelView(t, detail) {
+    const state = this.keyOffers[detail.name];
+    const hasContent = Boolean(
+      state?.offer?.offered?.length || state?.offer?.conflicts?.length || state?.offer?.problems?.length,
+    );
+    return v_flex()
+      .id("configurator-keys-panel")
+      .w(440)
+      .p(12)
+      .gap(6)
+      .rounded(8)
+      .border_1()
+      .border_color(t.border)
+      .bg(t.popover)
+      .child(
+        h_flex()
+          .gap(8)
+          .items_center()
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .text_size(13)
+              .text_color(t.foreground)
+              .child(`Key bindings for ${detail.title}`),
+          )
+          .child(
+            div()
+              .id("configurator-keys-close")
+              .px(8)
+              .py(2)
+              .rounded(6)
+              .border_1()
+              .border_color(t.border)
+              .text_size(11)
+              .text_color(t.muted)
+              .cursor_pointer()
+              .hover((s) => s.bg(t.hover))
+              .on_click((_e, cx) => this.closeKeys(cx))
+              .child("Close"),
+          ),
+      )
+      .when(!state || state.loading, (el) =>
+        el.child(div().text_size(11).text_color(t.dim).child("Reading keys.json…")),
+      )
+      .when(Boolean(state?.error), (el) =>
+        el.child(div().min_w(0).text_size(11).text_color(t.blocked).child(state.error)),
+      )
+      .when(!state?.loading && !state?.error && !hasContent, (el) =>
+        el.child(div().text_size(11).text_color(t.dim).child("This entry ships no key bindings.")),
+      )
+      .when(hasContent, (el) => el.child(this.keyOfferBlock(t, state.offer, detail.name)));
+  }
+
+  // Offered bindings as monospace lines, each with the runtime clipboard's Copy action; conflicts
+  // as the sentence that names what already holds the key. The fragment is shown for pasting.
+  keyOfferBlock(t, offer, id) {
+    const groups = [];
+    for (const binding of offer?.offered ?? []) {
+      let group = groups.find((candidate) => candidate.section === binding.section);
+      if (!group) groups.push((group = { section: binding.section, bindings: [] }));
+      group.bindings.push(binding);
+    }
+    return v_flex()
+      .gap(5)
+      .when(groups.length > 0, (el) =>
+        el.child(div().text_size(11).text_color(t.muted).child("Offered (nothing bound there yet)")),
+      )
+      .children(
+        groups.map((group) =>
+          v_flex()
+            .gap(3)
+            .child(
+              div()
+                .font_family("JetBrains Mono")
+                .text_size(10.5)
+                .text_color(t.dim)
+                .child(group.section),
+            )
+            .children(
+              group.bindings.map((binding) =>
+                h_flex()
+                  .gap(6)
+                  .items_center()
+                  .child(
+                    div()
+                      .flex_1()
+                      .min_w(0)
+                      .font_family("JetBrains Mono")
+                      .text_size(10.5)
+                      .text_color(t.foreground)
+                      .child(keyBindingLine(binding)),
+                  )
+                  .child(
+                    div()
+                      .id(`configurator-copy-${id}-${group.section}-${binding.keys}`)
+                      .h(20)
+                      .px(7)
+                      .flex()
+                      .items_center()
+                      .rounded(5)
+                      .border_1()
+                      .border_color(t.border)
+                      .text_size(10.5)
+                      .text_color(t.foreground)
+                      .cursor_pointer()
+                      .hover((s) => s.bg(t.hover))
+                      .on_click((_e, cx) => cx.write_to_clipboard(keyBindingLine(binding)))
+                      .child("Copy"),
+                  ),
+              ),
+            ),
+        ),
+      )
+      .when(groups.length > 0, (el) =>
+        el.child(
+          h_flex()
+            .gap(6)
+            .items_center()
+            .child(
+              div()
+                .flex_1()
+                .min_w(0)
+                .text_size(10.5)
+                .text_color(t.dim)
+                .child("Copy all offered as a keys.json fragment"),
+            )
+            .child(
+              div()
+                .id(`configurator-copy-all-${id}`)
+                .h(20)
+                .px(7)
+                .flex()
+                .items_center()
+                .rounded(5)
+                .border_1()
+                .border_color(t.border)
+                .text_size(10.5)
+                .text_color(t.foreground)
+                .cursor_pointer()
+                .hover((s) => s.bg(t.hover))
+                .on_click((_e, cx) => cx.write_to_clipboard(keysFragmentText(offer.offered)))
+                .child("Copy all"),
+            ),
+        ),
+      )
+      .when(Boolean(offer?.conflicts?.length), (el) =>
+        el
+          .child(div().text_size(11).text_color(t.muted).child("Conflicts, not offered"))
+          .children(
+            offer.conflicts.map((conflict) =>
+              div()
+                .min_w(0)
+                .text_size(11)
+                .line_height("15px")
+                .text_color(t.blocked)
+                .child(keyConflictText(conflict)),
+            ),
+          ),
+      )
+      .when(Boolean(offer?.problems?.length), (el) =>
+        el.child(
+          div()
+            .min_w(0)
+            .text_size(11)
+            .line_height("15px")
+            .text_color(t.dim)
+            .child(offer.problems.join(" ")),
+        ),
+      );
   }
 
   save(form, cx) {
@@ -1051,6 +1325,7 @@ export default class Configurator extends View {
       .gap(8)
       .items_center()
       .child(div().flex_1().min_w(0).text_size(11).text_color(t.dim).child(detail.scanText))
+      .child(this.keysTrigger(t, detail))
       .child(
         Popup.new(`configurator-uninstall-popup-${detail.name}`, trigger)
           .anchor("top_right")
@@ -1145,6 +1420,8 @@ export default class Configurator extends View {
         notify({ title: "Uninstall failed", body: outcome.error, level: "error" });
       } else {
         this.uninstall = null;
+        delete this.keyOffers[plan.name];
+        if (this.keyPanel === plan.name) this.keyPanel = null;
         await this.load();
         notify({
           title: "Uninstalled",
@@ -1402,11 +1679,27 @@ export default class Configurator extends View {
       )
       .when(this.installNote?.repository === row.repository, (el) =>
         el.child(
-          div()
-            .min_w(0)
-            .text_size(11)
-            .text_color(this.installNote.error ? t.blocked : t.dim)
-            .child(this.installNote.text),
+          v_flex()
+            .gap(4)
+            .child(
+              div()
+                .min_w(0)
+                .text_size(11)
+                .text_color(this.installNote.error ? t.blocked : t.dim)
+                .child(this.installNote.text),
+            )
+            .when(Boolean(this.installNote.keysError), (inner) =>
+              inner.child(div().min_w(0).text_size(11).text_color(t.blocked).child(this.installNote.keysError)),
+            )
+            .when(
+              Boolean(
+                this.installNote.keys?.offered?.length ||
+                  this.installNote.keys?.conflicts?.length ||
+                  this.installNote.keys?.problems?.length,
+              ),
+              (inner) =>
+                inner.child(this.keyOfferBlock(t, this.installNote.keys, `install-${row.repository}`)),
+            ),
         ),
       );
   }

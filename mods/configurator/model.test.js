@@ -2,6 +2,9 @@
 // Run with `node --test mods/configurator/*.test.js`; no Herdr, no dependencies.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   folderNames,
   rowsOf,
@@ -42,6 +45,11 @@ import {
   modFolderOf,
   declinedInstallText,
   installedText,
+  keysFileOf,
+  keysOfferOf,
+  keysFragmentText,
+  keyBindingLine,
+  keyConflictText,
   trashStamp,
   trashPath,
   confirmScanText,
@@ -1165,4 +1173,158 @@ test("the install result says what landed where, with the short commit", () => {
     }),
     "Installed better-changes into mods/better-changes-copy from BWrong/better-changes @ abcdef1.",
   );
+});
+
+// --- Key bindings a repository ships: parsing its keys.json, the split against the
+// person's current bindings, and the text a copy action hands over.
+
+test("keysFileOf reads a mod's keys.json into one row per binding", () => {
+  const text = JSON.stringify({
+    global: { "cmd-j": "mod.open:herdr-panel" },
+    "mod:herdr-panel": { "cmd-shift-j": "herdr-panel:toggle" },
+  });
+  assert.deepEqual(keysFileOf(text), {
+    bindings: [
+      { section: "global", keys: "cmd-j", action: "mod.open:herdr-panel" },
+      { section: "mod:herdr-panel", keys: "cmd-shift-j", action: "herdr-panel:toggle" },
+    ],
+    problem: null,
+  });
+});
+
+test("keysFileOf keeps a command object action as it is", () => {
+  const action = { command: "layout.resize", args: { id: "sidebar", px: 240 } };
+  const parsed = keysFileOf(JSON.stringify({ global: { "ctrl-shift-r": action } }));
+  assert.deepEqual(parsed.bindings, [{ section: "global", keys: "ctrl-shift-r", action }]);
+});
+
+test("keysFileOf treats an absent or empty file as shipping no bindings, not a failure", () => {
+  assert.deepEqual(keysFileOf(""), { bindings: [], problem: null });
+  assert.deepEqual(keysFileOf("   \n"), { bindings: [], problem: null });
+  assert.deepEqual(keysFileOf(null), { bindings: [], problem: null });
+});
+
+test("keysFileOf reports a file it cannot read rather than guessing", () => {
+  assert.equal(keysFileOf("not json").problem, "keys.json is not valid JSON.");
+  assert.equal(keysFileOf("[1,2]").problem, "keys.json is not an object.");
+  const mixed = keysFileOf('{"global":{"cmd-j":"x"},"broken":[1]}');
+  assert.equal(mixed.bindings.length, 1);
+  assert.equal(mixed.problem, 'keys.json section "broken" is not an object.');
+});
+
+test("keysFileOf drops unusable actions and says how many", () => {
+  const parsed = keysFileOf('{"global":{"cmd-j":"ok","cmd-k":42,"cmd-l":{"args":{}}}}');
+  assert.deepEqual(parsed.bindings, [{ section: "global", keys: "cmd-j", action: "ok" }]);
+  assert.equal(parsed.problem, "keys.json has 2 bindings with unusable actions.");
+});
+
+test("a binding conflicts when its key is already bound in any section, and the note names it", () => {
+  const current = [
+    { section: "global", keys: "cmd-t", action: "tab.new" },
+    { section: "terminal", keys: "cmd-c", action: "terminal.copy" },
+    { section: "mod:editor", keys: "ctrl-s", action: "editor.save" },
+  ];
+  const text = JSON.stringify({
+    global: { "cmd-t": "herdr-panel:tabs" },
+    "mod:herdr-panel": { "ctrl-s": "herdr-panel:save" },
+  });
+  const offer = keysOfferOf([{ source: "installed folder", text }], current);
+  const conflict = offer.conflicts.find((entry) => entry.keys === "cmd-t");
+  assert.deepEqual(conflict.existing, [{ section: "global", action: "tab.new" }]);
+  assert.equal(keyConflictText(conflict), "cmd-t is already bound in global (tab.new).");
+  assert.equal(offer.offered.length, 0);
+});
+
+test("the split offers what nothing binds and lists what collides, with the section that holds it", () => {
+  const current = [
+    { section: "global", keys: "cmd-t", action: "tab.new" },
+    { section: "terminal", keys: "cmd-c", action: "terminal.copy" },
+    { section: "mod:editor", keys: "ctrl-s", action: "editor.save" },
+  ];
+  const text = JSON.stringify({
+    global: { "cmd-shift-j": "herdr-panel:toggle", "cmd-t": "herdr-panel:tabs" },
+    "mod:herdr-panel": { "ctrl-s": "herdr-panel:save", "cmd-j": "mod.open:herdr-panel" },
+  });
+  const offer = keysOfferOf([{ source: "installed folder", text }], current);
+  assert.deepEqual(offer.problems, []);
+  assert.deepEqual(offer.offered.map((binding) => [binding.section, binding.keys]), [
+    ["global", "cmd-shift-j"],
+    ["mod:herdr-panel", "cmd-j"],
+  ]);
+  assert.deepEqual(offer.conflicts.map((conflict) => [conflict.keys, conflict.existing]), [
+    ["cmd-t", [{ section: "global", action: "tab.new" }]],
+    ["ctrl-s", [{ section: "mod:editor", action: "editor.save" }]],
+  ]);
+});
+
+test("the same key bound in several sections is one conflict noting each of them", () => {
+  const current = [
+    { section: "global", keys: "cmd-t", action: "tab.new" },
+    { section: "terminal", keys: "cmd-t", action: "terminal.new" },
+  ];
+  const offer = keysOfferOf([{ source: "x", text: '{"mod:x":{"cmd-t":"x:new"}}' }], current);
+  assert.equal(offer.conflicts.length, 1);
+  assert.deepEqual(offer.conflicts[0].existing, [
+    { section: "global", action: "tab.new" },
+    { section: "terminal", action: "terminal.new" },
+  ]);
+  assert.equal(keyConflictText(offer.conflicts[0]), "cmd-t is already bound in global (tab.new), terminal (terminal.new).");
+});
+
+test("the same binding shipped twice by one repository is offered once", () => {
+  const text = '{"global":{"cmd-j":"mod.open:herdr-panel"}}';
+  const offer = keysOfferOf(
+    [
+      { source: "upstream", text },
+      { source: "installed folder", text },
+    ],
+    [],
+  );
+  assert.deepEqual(offer.offered, [{ section: "global", keys: "cmd-j", action: "mod.open:herdr-panel" }]);
+  assert.deepEqual(offer.problems, []);
+});
+
+test("the offered bindings copy as a keys.json fragment and each line stands alone", () => {
+  const offered = [
+    { section: "global", keys: "cmd-j", action: "mod.open:herdr-panel" },
+    { section: "global", keys: "cmd-shift-r", action: { command: "layout.resize", args: { id: "sidebar", px: 240 } } },
+    { section: "mod:herdr-panel", keys: "cmd-shift-j", action: "herdr-panel:toggle" },
+  ];
+  const fragment = keysFragmentText(offered);
+  assert.deepEqual(JSON.parse(fragment), {
+    global: { "cmd-j": "mod.open:herdr-panel", "cmd-shift-r": { command: "layout.resize", args: { id: "sidebar", px: 240 } } },
+    "mod:herdr-panel": { "cmd-shift-j": "herdr-panel:toggle" },
+  });
+  assert.match(fragment, /^\{\n  "global": \{\n/);
+  assert.equal(
+    keyBindingLine(offered[1]),
+    '"cmd-shift-r": {"command":"layout.resize","args":{"id":"sidebar","px":240}}',
+  );
+});
+
+test("with every binding taken there is nothing to copy", () => {
+  const current = [{ section: "global", keys: "cmd-j", action: "app.quit" }];
+  const offer = keysOfferOf([{ source: "x", text: '{"mod:x":{"cmd-j":"x:open"}}' }], current);
+  assert.deepEqual(offer.offered, []);
+  assert.equal(keysFragmentText(offer.offered), "");
+});
+
+test("the pure half of the flow leaves the person's keys file untouched", () => {
+  const folder = mkdtempSync(join(tmpdir(), "herdr-keys-"));
+  const file = join(folder, "keys.json");
+  const text = '{\n  "global": { "cmd-j": "app.quit" },\n  "mod:editor": { "ctrl-s": "editor.save" }\n}\n';
+  writeFileSync(file, text);
+  try {
+    const current = keysFileOf(readFileSync(file, "utf8")).bindings;
+    const offer = keysOfferOf(
+      [{ source: "upstream", text: '{"global":{"cmd-j":"mod.open:herdr-panel","cmd-shift-j":"herdr-panel:toggle"}}' }],
+      current,
+    );
+    assert.equal(offer.conflicts.length, 1);
+    assert.equal(offer.offered.length, 1);
+    assert.equal(keysFragmentText(offer.offered), '{\n  "global": {\n    "cmd-shift-j": "herdr-panel:toggle"\n  }\n}\n');
+    assert.equal(readFileSync(file, "utf8"), text);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });

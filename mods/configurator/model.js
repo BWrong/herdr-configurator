@@ -114,6 +114,98 @@ export function keyBindingsOf(keys, name) {
     .map(({ keys, action }) => ({ keys, action }));
 }
 
+// An incoming keys.json as Herdr writes it: section → key → action, where an action is a
+// command string or {command, args}. Rows are flat, in file order; values that are neither
+// are dropped and counted, never guessed at.
+export function keysFileOf(text) {
+  const raw = typeof text === "string" ? text : "";
+  if (!raw.trim()) return { bindings: [], problem: null };
+  let value = null;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return { bindings: [], problem: "keys.json is not valid JSON." };
+  }
+  if (!isObject(value)) return { bindings: [], problem: "keys.json is not an object." };
+  const bindings = [];
+  const problems = [];
+  let unusable = 0;
+  for (const [section, sectionBindings] of Object.entries(value)) {
+    if (!isObject(sectionBindings)) {
+      problems.push(`keys.json section "${section}" is not an object.`);
+      continue;
+    }
+    for (const [keys, action] of Object.entries(sectionBindings)) {
+      if (typeof action === "string" && action) bindings.push({ section, keys, action });
+      else if (isObject(action) && typeof action.command === "string" && action.command)
+        bindings.push({ section, keys, action });
+      else unusable++;
+    }
+  }
+  if (unusable)
+    problems.push(`keys.json has ${unusable} binding${unusable === 1 ? "" : "s"} with unusable actions.`);
+  return { bindings, problem: problems.length ? problems.join(" ") : null };
+}
+
+// A copy of `action` as words: the command string itself, or the object compactly.
+const actionTextOf = (action) => (typeof action === "string" ? action : JSON.stringify(action ?? null));
+
+// What a repository's bindings offer against the person's current ones: every key already
+// bound in any section is a conflict that names the sections holding it; the rest are offered.
+// Exact duplicates across the sources are offered once. Nothing is ever applied here.
+export function keysOfferOf(documents, current = []) {
+  const problems = [];
+  const bindings = [];
+  const seen = new Set();
+  for (const document of documents ?? []) {
+    const parsed = keysFileOf(document?.text);
+    if (parsed.problem) problems.push(`${document?.source ?? "keys.json"}: ${parsed.problem}`);
+    for (const binding of parsed.bindings) {
+      const identity = JSON.stringify([binding.section, binding.keys, binding.action]);
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      bindings.push(binding);
+    }
+  }
+  const bound = (current ?? []).filter((entry) => typeof entry?.keys === "string");
+  const offered = [];
+  const conflicts = [];
+  for (const binding of bindings) {
+    const existing = bound
+      .filter((entry) => entry.keys === binding.keys)
+      .map(({ section, action }) => ({ section, action }));
+    if (existing.length) conflicts.push({ ...binding, existing });
+    else offered.push(binding);
+  }
+  return { offered, conflicts, problems };
+}
+
+// The offered bindings as a keys.json fragment, ready to paste; sections keep their first
+// appearance order, two-space indent. With nothing offered there is nothing to copy.
+export function keysFragmentText(bindings) {
+  const sections = {};
+  for (const binding of bindings ?? []) {
+    if (typeof binding?.section !== "string" || typeof binding?.keys !== "string") continue;
+    if (!isObject(sections[binding.section])) sections[binding.section] = {};
+    sections[binding.section][binding.keys] = binding.action;
+  }
+  if (!Object.keys(sections).length) return "";
+  return `${JSON.stringify(sections, null, 2)}\n`;
+}
+
+// One offered binding as the line a person can paste under its section.
+export function keyBindingLine(binding) {
+  return `${JSON.stringify(binding?.keys ?? "")}: ${JSON.stringify(binding?.action ?? null)}`;
+}
+
+// One conflict in words: the key and every section that already holds it.
+export function keyConflictText(conflict) {
+  const where = (conflict?.existing ?? [])
+    .map((entry) => `${entry.section} (${actionTextOf(entry.action)})`)
+    .join(", ");
+  return `${conflict?.keys} is already bound in ${where}.`;
+}
+
 // The Reference scan's answer as one line: which layouts mount the entry, which key
 // bindings belong to it, and "none" when neither does.
 export function scanText({ layouts = [], keys = [] } = {}) {
