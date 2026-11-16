@@ -850,3 +850,42 @@ export function carryOver(legacyRaw, existingRaw) {
   if (!isObject(legacy?.values) || !Object.keys(legacy.values).length) return null;
   return { version: typeof legacy.version === "string" ? legacy.version : null, values: legacy.values };
 }
+
+// --- Installing from the gallery: which folder a fresh install takes, which folder a
+// repository ships, and what the result line says. The clone, the copy and the check are
+// main.js's job; this is the naming and the words.
+
+// The folder name a fresh install takes: the mod's own name, `-copy` when mods/ already
+// has it, then `-copy-2`, `-copy-3`, … for every further collision.
+export function installFolderName(name, taken = []) {
+  const used = new Set(taken ?? []);
+  if (!used.has(name)) return name;
+  if (!used.has(`${name}-copy`)) return `${name}-copy`;
+  for (let index = 2; ; index++) {
+    const candidate = `${name}-copy-${index}`;
+    if (!used.has(candidate)) return candidate;
+  }
+}
+
+// Which folder under the repository's mods/ is the mod: the one named after the repository,
+// else the repository's only one. Several with none matching is ambiguous (null).
+export function modFolderOf(repoName, folders = []) {
+  const list = (folders ?? []).filter((folder) => typeof folder === "string" && folder);
+  if (list.includes(repoName)) return repoName;
+  return list.length === 1 ? list[0] : null;
+}
+
+// Why nothing was installed: no mod folder at all, or several and none named after the
+// repository. The clone is kept either way; the text never claims a copy was made.
+export function declinedInstallText(repo, folders = []) {
+  const list = (folders ?? []).filter(Boolean);
+  if (!list.length) return `${repo} ships no mod folder under mods/, so nothing was copied.`;
+  return `${repo} ships ${list.length} mod folders (${list.join(", ")}) and none is named after the repository; nothing was copied.`;
+}
+
+// What a successful install reports: the mod, the folder it landed in and where it came
+// from, with the short commit.
+export function installedText({ name, folder, repo, commit } = {}) {
+  const short = typeof commit === "string" ? commit.slice(0, 7) : "";
+  return `Installed ${name} into mods/${folder} from ${repo}${short ? ` @ ${short}` : ""}.`;
+}

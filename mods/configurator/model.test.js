@@ -38,6 +38,10 @@ import {
   checkStateOf,
   checkedText,
   withCheckResults,
+  installFolderName,
+  modFolderOf,
+  declinedInstallText,
+  installedText,
   trashStamp,
   trashPath,
   confirmScanText,
@@ -1352,4 +1356,74 @@ test("an update clones into its own temp folder under the Configurator's state",
     "data/configurator/temp/update-better-changes-2026-11-16T16-00-00Z",
   );
   assert.equal(updateTempPath("x", { now: 1794844800000, temp: "/tmp/here" }), "/tmp/here/update-x-2026-11-16T16-00-00Z");
+});
+
+// --- Installing from the gallery: the folder a fresh install takes, which folder a
+// repository ships, the ledger row it records, and what the result line says.
+
+test("an install takes the mod folder's own name unless mods/ already has it", () => {
+  assert.equal(installFolderName("better-changes", []), "better-changes");
+  assert.equal(installFolderName("better-changes", ["help", "other"]), "better-changes");
+  assert.equal(installFolderName("better-changes", ["better-changes"]), "better-changes-copy");
+  assert.equal(
+    installFolderName("better-changes", ["better-changes", "better-changes-copy"]),
+    "better-changes-copy-2",
+  );
+  assert.equal(
+    installFolderName("better-changes", ["better-changes", "better-changes-copy", "better-changes-copy-2"]),
+    "better-changes-copy-3",
+  );
+  assert.equal(installFolderName("better-changes", null), "better-changes");
+});
+
+test("a repository's mod folder is the one named after it, or its only one", () => {
+  assert.equal(modFolderOf("better-changes", ["better-changes"]), "better-changes");
+  assert.equal(modFolderOf("herdr-configurator", ["configurator"]), "configurator");
+  assert.equal(modFolderOf("two", ["one", "two"]), "two");
+  assert.equal(modFolderOf("multi", ["one", "two"]), null);
+  assert.equal(modFolderOf("empty", []), null);
+  assert.equal(modFolderOf("empty", null), null);
+});
+
+test("a repository with no mod folder is declined with an explanation", () => {
+  const none = declinedInstallText("owner/empty", []);
+  assert.match(none, /ships no mod folder/);
+  assert.match(none, /nothing was copied/i);
+  const several = declinedInstallText("owner/multi", ["one", "two"]);
+  assert.match(several, /ships 2 mod folders \(one, two\)/);
+  assert.match(several, /none is named after the repository/);
+});
+
+test("a fresh install records the resolved commit and a hash per file in the ledger", () => {
+  const output = `${digest("a")}  ./mod.json\n${digest("b")}  ./main.js\n`;
+  const files = hashesOf(output);
+  const entries = recordSource({}, {
+    name: "better-changes-copy",
+    repo: "BWrong/better-changes",
+    ref: "main",
+    commit: HEX,
+    files,
+    now: 1794000000000,
+  });
+  const row = entries["better-changes-copy"];
+  assert.equal(row.origin, "third_party");
+  assert.equal(row.repo, "BWrong/better-changes");
+  assert.equal(row.ref, "main");
+  assert.equal(row.commit, HEX);
+  assert.deepEqual(row.files, {
+    "main.js": `sha256:${digest("b")}`,
+    "mod.json": `sha256:${digest("a")}`,
+  });
+});
+
+test("the install result says what landed where, with the short commit", () => {
+  assert.equal(
+    installedText({
+      name: "better-changes",
+      folder: "better-changes-copy",
+      repo: "BWrong/better-changes",
+      commit: HEX,
+    }),
+    "Installed better-changes into mods/better-changes-copy from BWrong/better-changes @ abcdef1.",
+  );
 });
