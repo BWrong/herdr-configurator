@@ -1,5 +1,8 @@
 // The tab bar, a faithful port of the `tabs` mod with one addition: the gear after
-// Files/Changes, which opens the Configurator dialog.
+// Files/Changes, which opens the Configurator dialog, plus the Git panel button where the
+// layout carries a `git-graph` panel (upstream `tabs-graph` hardcodes it instead).
+// Upstream: ~/.config/herdr-app/mods/tabs/main.js — when Herdr ships a new `tabs`, run
+// `scripts/tabs-diff.sh` before trusting this copy.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
