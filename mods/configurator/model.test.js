@@ -34,6 +34,10 @@ import {
   galleryCacheText,
   errorTextOf,
   refreshedGallery,
+  checkTargets,
+  checkStateOf,
+  checkedText,
+  withCheckResults,
 } from "./model.js";
 
 const installed = { help: { "main.js": "hash" } };
@@ -786,4 +790,180 @@ test("a recorded entry lists as third party with known provenance and feeds the 
 test("an untouched third-party entry is still marked unknown in the detail pane", () => {
   const rows = rowsOf([{ name: "hand-made", modJson: '{"title":"Hand made"}' }], {});
   assert.equal(detailOf(rows[0], { folder: "mods/hand-made" }).unknown, true);
+});
+
+// --- Update checks: which entries to ask upstream about, what the answer means, and the
+// ledger update each check run plans. One lookup per tracked entry, nothing else.
+
+const movedLedger = {
+  "better-changes": {
+    kind: "mod",
+    origin: "third_party",
+    repo: "BWrong/better-changes",
+    ref: "main",
+    commit: HEX,
+    checkedAt: 1794000000000,
+    installedAt: 1794000000000,
+    files: {},
+  },
+};
+
+test("a check targets every tracked third-party entry at one commit URL, and nothing else", () => {
+  const rows = rowsOf(
+    [
+      { name: "better-changes", modJson: '{"title":"Better Changes"}' },
+      { name: "hand-made", modJson: '{"title":"Hand made"}' },
+      { name: "help", modJson: '{"title":"Help"}' },
+      { name: "catppuccin-status", modJson: '{"title":"Catppuccin","cloned_from":{"name":"workspace-status"}}' },
+    ],
+    { installed, ledger: movedLedger },
+  );
+  assert.deepEqual(checkTargets(rows, movedLedger), [
+    {
+      name: "better-changes",
+      repo: "BWrong/better-changes",
+      ref: "main",
+      url: "https://api.github.com/repos/BWrong/better-changes/commits/main",
+    },
+  ]);
+});
+
+test("a check target encodes a ref that carries a slash or a space", () => {
+  const entries = { "x": { repo: "o/r", ref: "feature/a b", commit: HEX } };
+  const rows = rowsOf([{ name: "x", modJson: null }], { ledger: entries });
+  assert.equal(checkTargets(rows, entries)[0].url, "https://api.github.com/repos/o/r/commits/feature%2Fa%20b");
+});
+
+test("no check is planned for a ledger row without a repository or a ref, or for no rows at all", () => {
+  const rows = rowsOf([{ name: "x", modJson: null }, { name: "y", modJson: null }], {
+    ledger: { x: { commit: HEX }, y: { repo: "o/r" } },
+  });
+  assert.deepEqual(checkTargets(rows, { x: { commit: HEX }, y: { repo: "o/r" } }), []);
+  assert.deepEqual(checkTargets([], {}), []);
+  assert.deepEqual(checkTargets(undefined, undefined), []);
+  assert.deepEqual(checkTargets([], { x: { repo: "o/r", ref: "main" } }), []);
+});
+
+test("a check result equal to the ledger commit is up to date, anything else has moved", () => {
+  assert.equal(checkStateOf({ commit: HEX, checkedCommit: HEX }), "current");
+  assert.equal(checkStateOf({ commit: HEX, checkedCommit: HEX.toUpperCase() }), "current");
+  assert.equal(checkStateOf({ commit: HEX, checkedCommit: HEX2 }), "moved");
+  assert.equal(checkStateOf({ commit: "fedcba9876543", checkedCommit: HEX }), "moved");
+});
+
+test("an installed commit written short still compares by its prefix", () => {
+  assert.equal(checkStateOf({ commit: HEX.slice(0, 7), checkedCommit: HEX }), "current");
+});
+
+test("an entry that was never checked has no state, and neither has one without a commit", () => {
+  assert.equal(checkStateOf(undefined), "unchecked");
+  assert.equal(checkStateOf({}), "unchecked");
+  assert.equal(checkStateOf({ commit: HEX, checkedAt: 1794000000000 }), "unchecked");
+  assert.equal(checkStateOf({ commit: HEX, checkedCommit: "abc" }), "unchecked");
+  assert.equal(checkStateOf({ checkedCommit: HEX }), "unchecked");
+});
+
+test("a failed check is a state of its own and never reads as up to date", () => {
+  const message = "API rate limit exceeded for 203.0.113.7.";
+  assert.equal(checkStateOf({ commit: HEX, checkedError: message }), "failed");
+  assert.equal(checkStateOf({ commit: HEX, checkedCommit: HEX, checkedError: message }), "failed");
+});
+
+test("rows carry a check state only for tracked third-party entries", () => {
+  const rows = rowsOf(
+    [
+      { name: "better-changes", modJson: null },
+      { name: "help", modJson: null },
+    ],
+    { installed, ledger: { "better-changes": { repo: "o/r", ref: "main", commit: HEX, checkedCommit: HEX } } },
+  );
+  const byName = Object.fromEntries(rows.map((row) => [row.name, row.checkState]));
+  assert.deepEqual(byName, { "better-changes": "current", help: null });
+});
+
+test("checkedText writes a check time in UTC, and nothing when there is none", () => {
+  assert.equal(checkedText(1794844800000), "2026-11-16 16:00 UTC");
+  assert.equal(checkedText("1794844800000"), "2026-11-16 16:00 UTC");
+  assert.equal(checkedText(undefined), null);
+  assert.equal(checkedText(0), null);
+  assert.equal(checkedText("not a time"), null);
+});
+
+test("a successful check records checkedAt and the resolved commit without touching commit", () => {
+  const entries = withCheckResults(movedLedger, [{ name: "better-changes", commit: HEX2 }], 600);
+  const row = entries["better-changes"];
+  assert.equal(row.checkedAt, 600);
+  assert.equal(row.checkedCommit, HEX2);
+  assert.equal(row.commit, HEX);
+  assert.equal(row.installedAt, 1794000000000);
+  assert.equal(row.repo, "BWrong/better-changes");
+  assert.equal(Object.hasOwn(row, "checkedError"), false);
+});
+
+test("a failed check records checkedAt and the responder's text instead of a commit", () => {
+  const entries = withCheckResults(
+    movedLedger,
+    [{ name: "better-changes", error: "API rate limit exceeded for 203.0.113.7." }],
+    600,
+  );
+  const row = entries["better-changes"];
+  assert.equal(row.checkedAt, 600);
+  assert.equal(row.checkedError, "API rate limit exceeded for 203.0.113.7.");
+  assert.equal(Object.hasOwn(row, "checkedCommit"), false);
+  assert.equal(row.commit, HEX);
+});
+
+test("a check run leaving a result out leaves its row exactly as it was", () => {
+  const entries = {
+    ...movedLedger,
+    other: { repo: "o/r2", ref: "main", commit: HEX2, checkedCommit: HEX2, checkedAt: 100 },
+  };
+  const next = withCheckResults(entries, [{ name: "better-changes", commit: HEX2 }], 600);
+  assert.deepEqual(next.other, entries.other);
+  assert.deepEqual(entries["better-changes"], movedLedger["better-changes"]);
+  assert.deepEqual(withCheckResults(entries, [], 600), entries);
+});
+
+test("a check result for a name the ledger does not hold adds no row", () => {
+  assert.deepEqual(withCheckResults({}, [{ name: "ghost", commit: HEX2 }], 600), {});
+});
+
+test("a result without a usable commit becomes a failure, not a silent up-to-date", () => {
+  const row = withCheckResults({ x: { repo: "o/r", ref: "main", commit: HEX } }, [{ name: "x" }], 600).x;
+  assert.equal(Object.hasOwn(row, "checkedCommit"), false);
+  assert.match(row.checkedError, /no commit/i);
+});
+
+test("the detail pane carries the check time, its state and the failure's own text", () => {
+  const ledger = {
+    "better-changes": {
+      ...movedLedger["better-changes"],
+      checkedAt: 1794844800000,
+      checkedCommit: HEX2,
+    },
+  };
+  const rows = rowsOf([{ name: "better-changes", modJson: null }], { ledger });
+  const detail = detailOf(rows[0], { folder: "mods/better-changes", ledger });
+  assert.equal(detail.lastChecked, "2026-11-16 16:00 UTC");
+  assert.equal(detail.checkState, "moved");
+  assert.equal(detail.checkError, null);
+});
+
+test("the detail pane of a failed check shows the responder's message, not a state", () => {
+  const message = "API rate limit exceeded for 203.0.113.7.";
+  const ledger = { x: { ...movedLedger["better-changes"], checkedAt: 1794844800000, checkedError: message } };
+  const rows = rowsOf([{ name: "x", modJson: null }], { ledger });
+  const detail = detailOf(rows[0], { folder: "mods/x", ledger });
+  assert.equal(detail.checkState, "failed");
+  assert.equal(detail.checkError, message);
+  assert.equal(detail.lastChecked, "2026-11-16 16:00 UTC");
+});
+
+test("the detail pane of an entry never checked has no time and no state of consequence", () => {
+  const ledger = { x: { repo: "o/r", ref: "main", commit: HEX } };
+  const rows = rowsOf([{ name: "x", modJson: null }], { ledger });
+  const detail = detailOf(rows[0], { folder: "mods/x", ledger });
+  assert.equal(detail.lastChecked, null);
+  assert.equal(detail.checkState, "unchecked");
+  assert.equal(detail.checkError, null);
 });
