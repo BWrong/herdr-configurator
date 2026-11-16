@@ -433,6 +433,123 @@ export function withoutEntry(entries, name) {
   return out;
 }
 
+// Update: three hashes per file — the ledger's, the local copy's, upstream's — and the plan
+// they produce. Nothing here touches the disk; main.js clones, moves and writes.
+
+// The folder one update clones upstream into, under the Configurator's own state and left
+// in place when the run fails, so it can be looked at.
+const UPDATE_TEMP = "data/configurator/temp";
+
+export function updateTempPath(name, { now = Date.now(), temp = UPDATE_TEMP } = {}) {
+  return `${temp}/update-${name}-${trashStamp(now)}`;
+}
+
+const namesOf = (hashes) => (isObject(hashes) ? Object.keys(hashes).sort() : []);
+
+// What one update comparison says: which local files differ from the ledger (`edited`), which
+// upstream files the ledger has no hash for (`added`), which ledger files upstream no longer
+// ships (`removed`), the ones whose contents changed (`replaced`), the ones written back
+// even though upstream did not change them (`restored`), the unchanged ones, the upstream
+// paths whose bytes differ from what is on disk (`writes`), the edited files that must be
+// backed up before being written over (`backup`), and the dropped files still on disk
+// (`toTrash`). Any local difference makes the entry edited: nothing is written until the
+// person confirms.
+export function compareUpdate({ recorded = {}, local = {}, upstream = {} } = {}) {
+  const ledger = isObject(recorded) ? recorded : {};
+  const onDisk = isObject(local) ? local : {};
+  const incoming = isObject(upstream) ? upstream : {};
+  const upstreamNames = namesOf(incoming);
+  const edited = namesOf(onDisk).filter((name) => onDisk[name] !== ledger[name]);
+  for (const name of namesOf(ledger)) if (!Object.hasOwn(onDisk, name)) edited.push(name);
+  edited.sort();
+  const added = upstreamNames.filter((name) => !Object.hasOwn(ledger, name));
+  const removed = namesOf(ledger).filter((name) => !Object.hasOwn(incoming, name));
+  const replaced = upstreamNames.filter(
+    (name) => Object.hasOwn(ledger, name) && ledger[name] !== incoming[name],
+  );
+  const unchanged = upstreamNames.filter((name) => ledger[name] === incoming[name]);
+  const writes = upstreamNames.filter(
+    (name) => !Object.hasOwn(onDisk, name) || onDisk[name] !== incoming[name],
+  );
+  const restored = writes.filter((name) => !added.includes(name) && !replaced.includes(name));
+  const backup = edited.filter(
+    (name) => Object.hasOwn(onDisk, name) && writes.includes(name) && Object.hasOwn(incoming, name),
+  );
+  const toTrash = removed.filter((name) => Object.hasOwn(onDisk, name));
+  return {
+    status: edited.length ? "edited" : "clean",
+    edited,
+    added,
+    removed,
+    replaced,
+    restored,
+    unchanged,
+    writes,
+    backup,
+    toTrash,
+  };
+}
+
+// What the update does with the files: the upstream paths to write and the ones to move into
+// the trash first. An edited entry writes and trashes nothing until `overwrite` is set; then
+// every edited file upstream still ships is backed up before it is replaced.
+export function writePlan(comparison, { overwrite = false } = {}) {
+  const compared = isObject(comparison) ? comparison : {};
+  if (compared.status === "edited" && !overwrite) return { blocked: true, writes: [], trash: [] };
+  const trash = [...(Array.isArray(compared.toTrash) ? compared.toTrash : [])];
+  if (overwrite)
+    for (const name of Array.isArray(compared.backup) ? compared.backup : [])
+      if (!trash.includes(name)) trash.push(name);
+  return { blocked: false, writes: [...(Array.isArray(compared.writes) ? compared.writes : [])], trash: trash.sort() };
+}
+
+// The one line the dialog reports an update with.
+export function updateReportText({ name, commit, added = [], replaced = [], restored = [], removed = [] } = {}) {
+  const short = typeof commit === "string" && commit ? ` @ ${commit.slice(0, 7)}` : "";
+  const counts = [
+    [added.length, "added"],
+    [replaced.length, "replaced"],
+    [restored.length, "restored"],
+    [removed.length, "removed to the trash"],
+  ]
+    .filter(([count]) => count > 0)
+    .map(([count, word]) => `${count} ${count === 1 ? "file" : "files"} ${word}`);
+  return `Updated ${name}${short}: ${counts.length ? counts.join(", ") : "nothing changed"}.`;
+}
+
+// The question an edited entry asks first, listing every file that differs from the ledger.
+export function updatePromptText(name, edited = []) {
+  const count = `${edited.length} file${edited.length === 1 ? "" : "s"}`;
+  return `${name} has ${count} edited since install (${edited.join(", ")}). Back up and overwrite, or cancel?`;
+}
+
+// The ledger row an update writes: the installed commit and hashes, the comparison time, and
+// the install time it already had. Provenance and Origin stay as they were.
+export function updatedRow(entries, { name, commit, files = {}, now = Date.now() } = {}) {
+  const base = isObject(entries) ? entries : {};
+  const previous = isObject(base[name]) ? base[name] : null;
+  if (!previous || typeof commit !== "string" || !commit) return { ...base };
+  const row = {
+    ...previous,
+    commit,
+    files: isObject(files) ? files : {},
+    checkedAt: now,
+    checkedCommit: commit,
+  };
+  delete row.checkedError;
+  return { ...base, [name]: row };
+}
+
+// What the update action needs from a ledger row: the recorded repository, ref and per-file
+// hashes. A row without them has nothing to clone or compare.
+export function updateTargetOf(recorded) {
+  if (!isObject(recorded) || !isObject(recorded.files)) return null;
+  const repo = firstString(recorded.repo, recorded.repository);
+  const ref = firstString(recorded.ref);
+  if (!repo || !ref) return null;
+  return { repo, ref, commit: firstString(recorded.commit), files: recorded.files };
+}
+
 // Ledger: the Configurator's own record of provenance, kept in its state directory. Its
 // entries map is what rowsOf, originOf and detailOf read; writes go through ledgerJson.
 
