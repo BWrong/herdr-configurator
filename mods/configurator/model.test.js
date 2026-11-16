@@ -10,6 +10,7 @@ import {
   rowsOf,
   filterRows,
   fileSizesOf,
+  fileChipsOf,
   layoutsReferencing,
   keyBindingsOf,
   scanText,

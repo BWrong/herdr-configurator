@@ -1132,7 +1132,7 @@ export default class Configurator extends View {
           .flex_1()
           .min_h(0)
           .child(
-            v_flex().id("configurator-settings-body").size_full().overflow_y_scroll().py(2).children(
+            v_flex().id("configurator-settings-body").size_full().overflow_y_scroll().py(2).pr(6).children(
               form.groups.map((group) =>
                 v_flex()
                   .when(Boolean(group.name), (el) =>
@@ -1193,7 +1193,8 @@ export default class Configurator extends View {
     return h_flex()
       .id(`configurator-${row.name}`)
       .h(32)
-      .px(10)
+      .pl(10)
+      .pr(18)
       .gap(8)
       .items_center()
       .cursor_pointer()
@@ -1218,9 +1219,9 @@ export default class Configurator extends View {
       .when(Boolean(CHECK_DOTS[row.checkState]), (el) =>
         el.child(div().w(5).h(5).rounded(3).bg(t[CHECK_DOTS[row.checkState]])),
       )
-      .child(div().text_size(11).text_color(t.dim).child(this.originWord(row)))
+      .child(div().flex_none().min_w(0).truncate().text_size(11).text_color(t.dim).child(this.originWord(row)))
       .when(Boolean(row.version), (el) =>
-        el.child(div().text_size(11).text_color(t.dim).child(row.version)),
+        el.child(div().flex_none().min_w(0).truncate().text_size(11).text_color(t.dim).child(row.version)),
       );
   }
 
@@ -1243,6 +1244,7 @@ export default class Configurator extends View {
         div().text_size(12).text_color(t.dim).child(this.loaded ? "Select an entry." : "Loading…"),
       );
     }
+    const chips = fileChipsOf(detail.files);
     return base
       .child(
         h_flex()
@@ -1291,7 +1293,7 @@ export default class Configurator extends View {
             el.child(div().text_size(11).text_color(t.dim).child("No files on disk.")),
           )
           .children(
-            detail.files.map((file) =>
+            chips.shown.map((file) =>
               h_flex()
                 .gap(4)
                 .items_center()
@@ -1302,6 +1304,19 @@ export default class Configurator extends View {
                 .border_color(t.border)
                 .child(div().font_family("JetBrains Mono").text_size(11).text_color(t.foreground).child(file.name))
                 .child(div().text_size(10.5).text_color(t.dim).child(sizeText(file.size))),
+            ),
+          )
+          .when(chips.more > 0, (el) =>
+            el.child(
+              div()
+                .px(5)
+                .py(2)
+                .rounded(4)
+                .border_1()
+                .border_color(t.border)
+                .text_size(10.5)
+                .text_color(t.dim)
+                .child(`+${chips.more} more`),
             ),
           ),
       )
@@ -1917,7 +1932,8 @@ export default class Configurator extends View {
     return v_flex()
       .id(`configurator-gallery-${row.repository}`)
       .gap(3)
-      .px(10)
+      .pl(10)
+      .pr(18)
       .py(7)
       .border_b(1)
       .border_color(t.border)
@@ -2094,6 +2110,7 @@ export default class Configurator extends View {
       .child(
         v_flex()
           .w(320)
+          .flex_none()
           .h_full()
           .min_h(0)
           .bg(t.surface)

@@ -84,6 +84,14 @@ export function fileSizesOf(output) {
   return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// The file chips the detail pane draws: the first `limit` files and how many more there are.
+// The pane has a fixed height, so a folder with many files shows a `+n more` chip instead of
+// pushing the actions below it out of view.
+export function fileChipsOf(files, limit = 5) {
+  const all = Array.isArray(files) ? files : [];
+  return { shown: all.slice(0, limit), more: Math.max(0, all.length - limit) };
+}
+
 // Whether a parsed layout mounts `name` anywhere in its block tree: `content.mod`.
 function mountsMod(node, name) {
   if (Array.isArray(node)) return node.some((child) => mountsMod(child, name));
