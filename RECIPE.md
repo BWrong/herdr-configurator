@@ -9,7 +9,8 @@ values are carried over once; the old mod is left in place.
 
 ## What you see
 
-**The tab bar button.** The tab bar's gear, in the right-hand group after Files / Changes:
+**The tab bar button.** The tab bar's gear, in the right-hand group after Files / Changes (and
+  after a Git button on layouts that carry a `git-graph` panel):
 a 26 px square, rounded 6 px, the theme's `dim` gear at 14 px, hover `hover` and `foreground`
 like its neighbours, tooltip "Configurator". It is this mod docked (`place: "none"`): point
 the layout's tabs block at it — `"content": { "mod": "configurator" }` — and the gear appears
@@ -169,8 +170,10 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - `tabbar.js` (160 lines): the tab bar, a faithful port of the `tabs` mod — tab pills, scroll
   handle, wheel and swipe handling, close button, right-click menu, `+`, Files / Changes
   panel buttons from `shared("workspace.panels")`, `syncPanel` and the `panels` localStorage
-  key, window buttons and macOS traffic-light padding. Its only addition is the gear button,
-  in the right-hand group after Files / Changes, which runs `mod.open`.
+  key, window buttons and macOS traffic-light padding. Its additions are two buttons in the
+  right-hand group: the Git panel button (drawn only where the layout's `panel-body` stack has a
+  `graph` child, so the gear keeps working as the entry point on a `tabs-graph` layout) and the
+  gear, which runs `mod.open`.
 - `main.js` (2158 lines): `class Configurator extends View`. `init` reads `props()`, creates
   the filter and provenance inputs in the overlay copy, and — unless `checking()` — spawns
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,

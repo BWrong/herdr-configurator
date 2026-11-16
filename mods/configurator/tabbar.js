@@ -152,6 +152,8 @@ export default class Tabs extends View {
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
+      // Only where the layout carries a git-graph panel, as tabs-graph assumes rather than asks.
+      .when(body?.children?.some((c) => c.id === "graph"), el => el.child(panelButton("graph", "Git", "mods/git-graph/icons/graph.svg")))
       .child(button("configurator", svg("mods/configurator/icons/gear.svg").size(14), () => run("mod.open", { name: "configurator" })).tooltip("Configurator"))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
