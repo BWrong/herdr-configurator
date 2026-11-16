@@ -167,3 +167,220 @@ export function detailOf(row, { folder = "", manifest = null, ledger = {}, files
     scanText: scanText(scan),
   };
 }
+
+// Settings: the form a mod.schema.json describes, the person's drafts, and what a save
+// writes. A schema's properties.settings is a tree of objects; its leaves become rows,
+// grouped by the first path segment. Only what differs from the file is written.
+
+const isLeaf = (spec) => spec.type === "object" || isObject(spec.properties);
+
+export function getPath(obj, dotted) {
+  return dotted.split(".").reduce((at, key) => (isObject(at) ? at[key] : undefined), obj);
+}
+
+// Sets a.b.c, making the objects on the way.
+export function setPath(obj, dotted, value) {
+  const keys = dotted.split(".");
+  let at = obj;
+  for (const key of keys.slice(0, -1)) {
+    if (!isObject(at[key])) at[key] = {};
+    at = at[key];
+  }
+  at[keys.at(-1)] = value;
+  return obj;
+}
+
+// Removes a.b.c, and any object it leaves empty.
+export function deletePath(obj, dotted) {
+  const keys = dotted.split(".");
+  const trail = [obj];
+  for (const key of keys.slice(0, -1)) {
+    const next = trail.at(-1)[key];
+    if (!isObject(next)) return obj;
+    trail.push(next);
+  }
+  delete trail.at(-1)[keys.at(-1)];
+  for (let i = trail.length - 1; i > 0; i--)
+    if (!Object.keys(trail[i]).length) delete trail[i - 1][keys[i - 1]];
+  return obj;
+}
+
+export function equal(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// "max_width" → "Max width"
+export function humanize(key) {
+  const words = String(key).split(".").at(-1).replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// text, number, choice or boolean: the four controls the form draws.
+function typeOfSpec(spec) {
+  if (Array.isArray(spec.enum)) return "choice";
+  if (spec.format === "duration" || spec.format === "size") return "text";
+  const types = [spec.type].flat();
+  if (types.includes("boolean")) return "boolean";
+  if (types.includes("integer") || types.includes("number")) return "number";
+  return "text";
+}
+
+function choicesOf(spec) {
+  if (!Array.isArray(spec.enum)) return null;
+  const labels = isObject(spec["x-labels"]) ? spec["x-labels"] : {};
+  return spec.enum.map((value) => ({
+    value,
+    label: typeof labels[value] === "string" ? labels[value] : humanize(String(value)),
+  }));
+}
+
+// Every row the schema describes, in schema order, under properties.settings.
+export function settingsFields(schema) {
+  const fields = [];
+  const walk = (node, prefix) => {
+    for (const [key, spec] of Object.entries(isObject(node?.properties) ? node.properties : {})) {
+      if (!isObject(spec)) continue;
+      const name = prefix ? `${prefix}.${key}` : key;
+      if (isLeaf(spec)) walk(spec, name);
+      else
+        fields.push({
+          key: name,
+          group: prefix.split(".")[0],
+          title: typeof spec.title === "string" ? spec.title : humanize(key),
+          description: typeof spec.description === "string" ? spec.description : "",
+          type: typeOfSpec(spec),
+          default: spec.default,
+          choices: choicesOf(spec),
+          min: typeof spec.minimum === "number" ? spec.minimum : null,
+          max: typeof spec.maximum === "number" ? spec.maximum : null,
+          pattern: typeof spec.pattern === "string" ? spec.pattern : null,
+        });
+    }
+  };
+  walk(isObject(schema?.properties?.settings) ? schema.properties.settings : null, "");
+  return fields;
+}
+
+// Rows as the form draws them: one group per first path segment, top-level keys first.
+export function settingsGroups(fields) {
+  const groups = [];
+  for (const field of fields ?? []) {
+    let group = groups.find((g) => g.name === field.group);
+    if (!group) groups.push((group = { name: field.group, fields: [] }));
+    group.fields.push(field);
+  }
+  groups.sort((a, b) => (a.name === "" ? -1 : b.name === "" ? 1 : 0));
+  return groups;
+}
+
+// What the person typed, as the field's value, or why it doesn't fit.
+export function parseDraft(field, draft) {
+  if (!field) return { error: "Unknown setting." };
+  if (field.type === "boolean")
+    return typeof draft === "boolean" ? { value: draft } : { error: "Should be on or off." };
+  if (field.type === "choice") {
+    const match = (field.choices ?? []).find((choice) => String(choice.value) === String(draft));
+    return match ? { value: match.value } : { error: `Should be one of: ${(field.choices ?? []).map((c) => c.value).join(", ")}.` };
+  }
+  if (field.type === "number") {
+    const value = typeof draft === "number" ? draft : Number(String(draft ?? "").trim());
+    if (String(draft ?? "").trim() === "" || !Number.isFinite(value)) return { error: "Should be a number." };
+    if (field.min !== null && value < field.min) return { error: `Should be at least ${field.min}.` };
+    if (field.max !== null && value > field.max) return { error: `Should be at most ${field.max}.` };
+    return { value };
+  }
+  if (typeof draft !== "string") return { error: "Should be text." };
+  if (field.pattern) {
+    try {
+      if (!new RegExp(field.pattern).test(draft)) return { error: "Doesn't match the expected format." };
+    } catch {}
+  }
+  return { value: draft };
+}
+
+// Every field's draft, starting at what the file says and falling back to the default.
+export function draftOf(fields, settings = {}) {
+  const out = {};
+  for (const field of fields ?? []) {
+    const saved = getPath(settings ?? {}, field.key);
+    let value = saved === undefined ? field.default : saved;
+    if (field.type === "boolean") out[field.key] = typeof value === "boolean" ? value : false;
+    else {
+      if (value === undefined || value === null) value = field.choices?.[0]?.value;
+      out[field.key] = value === undefined || value === null ? "" : String(value);
+    }
+  }
+  return out;
+}
+
+// The fields whose draft differs from the file, invalid ones included so they can be marked.
+export function changedKeys(fields, drafts, settings = {}) {
+  const keys = [];
+  for (const field of fields ?? []) {
+    if (!Object.hasOwn(drafts ?? {}, field.key)) continue;
+    const parsed = parseDraft(field, drafts[field.key]);
+    if (parsed.error) {
+      keys.push(field.key);
+      continue;
+    }
+    const saved = getPath(settings ?? {}, field.key);
+    const effective = saved === undefined ? field.default : saved;
+    if (!equal(parsed.value, effective)) keys.push(field.key);
+  }
+  return keys;
+}
+
+// What a save writes: only the valid changed keys, values equal to a default removed,
+// and the invalid ones reported instead of written.
+export function savePlan(fields, drafts, settings = {}) {
+  const values = {};
+  const remove = [];
+  const problems = {};
+  for (const field of fields ?? []) {
+    if (!Object.hasOwn(drafts ?? {}, field.key)) continue;
+    const parsed = parseDraft(field, drafts[field.key]);
+    if (parsed.error) {
+      problems[field.key] = parsed.error;
+      continue;
+    }
+    const saved = getPath(settings ?? {}, field.key);
+    const effective = saved === undefined ? field.default : saved;
+    if (equal(parsed.value, effective)) continue;
+    if (field.default !== undefined && equal(parsed.value, field.default)) remove.push(field.key);
+    else values[field.key] = parsed.value;
+  }
+  return { values, remove, problems };
+}
+
+// The mod.json with the planned changes applied, every other key untouched.
+export function mergeSettings(manifest, { values = {}, remove = [] } = {}) {
+  const out = isObject(manifest) ? JSON.parse(JSON.stringify(manifest)) : {};
+  const settings = isObject(out.settings) ? out.settings : {};
+  for (const [key, value] of Object.entries(values)) setPath(settings, key, value);
+  for (const key of remove) deletePath(settings, key);
+  if (Object.keys(settings).length) out.settings = settings;
+  else delete out.settings;
+  return out;
+}
+
+// The copy the Configurator keeps outside the managed mod: its version and values.
+export function keptShape(manifest) {
+  return {
+    version: typeof manifest?.version === "string" ? manifest.version : null,
+    values: isObject(manifest?.settings) ? manifest.settings : {},
+  };
+}
+
+// A better-config kept file to carry into our own folder, once: only when ours is missing
+// and theirs holds values.
+export function carryOver(legacyRaw, existingRaw) {
+  if (existingRaw !== null && existingRaw !== undefined) return null;
+  let legacy = null;
+  try {
+    legacy = JSON.parse(legacyRaw);
+  } catch {
+    return null;
+  }
+  if (!isObject(legacy?.values) || !Object.keys(legacy.values).length) return null;
+  return { version: typeof legacy.version === "string" ? legacy.version : null, values: legacy.values };
+}
