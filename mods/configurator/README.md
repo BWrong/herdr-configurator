@@ -1,9 +1,10 @@
 # Configurator
 
 One dialog for every entry under `~/.config/herdr-app/mods/`: what it is, where it came
-from, whether upstream has moved, and what it is set to. A 26 px strip along the bottom of
-the window holds the button that opens it. It replaces `better-config`, and the settings values
-better-config kept are carried over once.
+from, whether upstream has moved, and what it is set to. The window's tab bar holds the gear
+that opens it, next to Files / Changes. It replaces `better-config`, and the settings values
+better-config kept are carried over once. A fresh install shows nothing until a layout names
+it: point the tabs block's content at the mod, `"content": { "mod": "configurator" }`.
 
 This mod has no settings of its own; it edits the settings of the entries it lists.
 
@@ -56,5 +57,5 @@ install succeeds; a failed install keeps it and says where.
 
 ## Icons
 
-`icons/gear.svg` is the strip's only icon. `jsconfig.json` and `gpui-kit.d.ts` are written by
+`icons/gear.svg` is the tab bar button's icon. `jsconfig.json` and `gpui-kit.d.ts` are written by
 Herdr into every mod folder when it loads one, and are ignored by this repository.

@@ -28,15 +28,14 @@ mod so that updating or uninstalling one never touches it.
 _Avoid_: registry, database, state
 
 **Docked copy** and **overlay copy**:
-Two independent instances of this mod. A docked copy sits in a layout block and draws the
-launcher button; an overlay copy draws the dialog. `props()` carries `overlay` only in the
-overlay copy.
+Two independent instances of this mod. A docked copy sits in a layout block and draws the tab
+bar; an overlay copy draws the dialog. `props()` carries `overlay` only in the overlay copy.
 _Avoid_: panel, window
 
-**Docked strip**:
-The 26 px bottom strip holding the launcher button — the only part of this mod that is
-always on screen.
-_Avoid_: toolbar, bar
+**Tab bar button**:
+The gear in the window's tab bar, next to Files / Changes, that opens the dialog. It is what
+a layout naming the mod as its tabs block draws.
+_Avoid_: strip, toolbar, bar
 
 **Reference scan**:
 Reading `layouts/*.json` and `keys.json` to find every place that names an entry, so the

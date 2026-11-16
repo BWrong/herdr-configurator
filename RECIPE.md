@@ -1,22 +1,21 @@
 # Configurator
 
 One dialog for everything installed under `~/.config/herdr-app/mods/`: what it is, where it
-came from, whether its upstream has moved, and what it is set to. A 26 px strip along the
-bottom of the window holds the button that opens it. It replaces `better-config`, whose kept
-settings values are carried over once; the old mod is left in place.
+came from, whether its upstream has moved, and what it is set to. A gear in the window's tab
+bar, next to Files / Changes, opens it. It replaces `better-config`, whose kept settings
+values are carried over once; the old mod is left in place.
 
 ![Configurator](preview.png)
 
 ## What you see
 
-**The docked strip.** 26 px tall, along the bottom edge, one row, right-aligned: a 14 px gear
-and the word "Configurator" at 12 px, with 8 px padding inside the button, a 6 px gap, and
-10 px padding at the window edge. The background is the theme's `chrome`, the text `muted`,
-and a 1 px `border` line runs along the top edge. Hovering the button turns the gear and the
-word `accent`. It is the mod docked (`place: "bottom"`, `size: 26`), nothing else is drawn
-there.
+**The tab bar button.** The tab bar's gear, in the right-hand group after Files / Changes:
+a 26 px square, rounded 6 px, the theme's `dim` gear at 14 px, hover `hover` and `foreground`
+like its neighbours, tooltip "Configurator". It is this mod docked (`place: "none"`): point
+the layout's tabs block at it — `"content": { "mod": "configurator" }` — and the gear appears
+there; nothing else is drawn.
 
-**The dialog** (`mod.open` with `name: "configurator"`, or the strip's button). 960 × 680;
+**The dialog** (`mod.open` with `name: "configurator"`, or the gear). 960 × 680;
 Herdr draws the frame, the shadow and the title, the mod draws two columns.
 
 **Left column**, 320 px, `surface` background:
@@ -91,7 +90,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 
 ## How it behaves
 
-- **Strip click** — `run("mod.open", {name: "configurator"})`. Escape, or `closeOverlay`,
+- **Tab bar gear** — `run("mod.open", {name: "configurator"})`. Escape, or `closeOverlay`,
   closes the dialog; `mod.open` again toggles it.
 - **Selecting a row** — the detail is read from disk for that entry and swapped in place;
   settings drafts are mirrored to `shared.json` (`configurator.drafts`) and re-applied when
@@ -163,11 +162,16 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 
 - `mods/configurator/mod.json`:
   `{"$schema":"./mod.schema.json","version":"0.1.0","title":"Configurator",
-  "place":"bottom","size":26,"overlay":{"kind":"dialog","width":960,"height":680}}`.
-  One folder, two copies: the docked one draws the strip (`props().overlay` absent), the
+  "place":"none","overlay":{"kind":"dialog","width":960,"height":680}}`.
+  One folder, two copies: the docked one draws the tab bar (`props().overlay` absent), the
   overlay one draws the dialog (`props().overlay` set). They share no module state; the
   dialog copy does its own reading.
-- `main.js` (2184 lines): `class Configurator extends View`. `init` reads `props()`, creates
+- `tabbar.js` (160 lines): the tab bar, a faithful port of the `tabs` mod — tab pills, scroll
+  handle, wheel and swipe handling, close button, right-click menu, `+`, Files / Changes
+  panel buttons from `shared("workspace.panels")`, `syncPanel` and the `panels` localStorage
+  key, window buttons and macOS traffic-light padding. Its only addition is the gear button,
+  in the right-hand group after Files / Changes, which runs `mod.open`.
+- `main.js` (2158 lines): `class Configurator extends View`. `init` reads `props()`, creates
   the filter and provenance inputs in the overlay copy, and — unless `checking()` — spawns
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,
   `installed.json`, every `layouts/*.json` and the gallery cache. `render` branches on
@@ -183,8 +187,9 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   property: the Configurator has none of its own. At runtime it reads each entry's
   `mods/<name>/mod.schema.json` for the settings form.
 - `herdr` calls: `appHome`, `home`, `exec`, `readTextFile`, `writeTextFile`, `checking`,
-  `closeOverlay`, `props`, `shared` / `setShared` (drafts only), `run` (`mod.open` only),
-  `theme`, `layouts()`, `keys()`, `notify`.
+  `closeOverlay`, `props`, `shared` / `setShared` (drafts only), `theme`, `layouts()`, `keys()`,
+  `notify`; the tab bar adds `spaces()`, `panes()`, `window()`, `layout()`, `settings()`,
+  `openOverlay`, `run` (`mod.open` for the gear, plus the tab, panel and window commands).
 - Network: `fetch` to `api.github.com/search/repositories` (the topic), `api.github.com/
   repos/{repo}/commits/{ref}` (checks, Record provenance), and `raw.githubusercontent.com` (an
   entry's `keys.json`). Unauthenticated: 60 requests/hour, 10 searches/minute.
@@ -193,7 +198,8 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   */`, `mkdir -p`, `mv`, `cp`, `rm -rf`.
 - Icons: one 14 px SVG, `mods/configurator/icons/gear.svg`, drawn with `svg(...)` so it
   follows the text colour.
-- Art: none. The preview is `herdr-app shot`, cropped to the dialog.
+- Art: none. The preview is `herdr-app shot`, downscaled to the whole window so the tab bar's
+  gear is visible.
 
 ## Watch out
 
@@ -203,8 +209,9 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **`checking()`**: `init` runs for real during `herdr-app check`. Every read, hash, clone,
   network request and write sits behind `if (checking()) return;`. Without it, verifying the
   mod would rewrite the person's ledger and other files.
-- **The first sight of the folder docks the strip** into the shown layout, in every layout.
-  Removing it means deleting the docked block from a layout, or setting it `hidden`.
+- **`place: "none"` draws nothing on install.** A fresh copy appears only where a layout names
+  it: set the tabs block's content to `"content": { "mod": "configurator" }`. To take the gear
+  away, point that block back at `tabs`.
 - **The ledger dies only with `data/configurator/`.** Uninstalling the Configurator leaves it
   behind on purpose: it holds provenance for entries that outlive the dialog.
 - **Unknown origin is normal.** Anything hand-dropped into `mods/` has no provenance: it is
@@ -233,9 +240,10 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 
 - `herdr-app check mods/configurator` exits 0, also from a fresh clone with no setup.
 - `node --test mods/configurator/*.test.js` passes (120 tests).
-- Copying the folder to `~/.config/herdr-app/mods/configurator` docks the 26 px strip at the
-  bottom; clicking it, or `herdr-app do mod.open --name configurator`, opens the dialog; and
-  `herdr-app shot` shows both.
+- Copying the folder to `~/.config/herdr-app/mods/configurator` shows nothing until the
+  layout's tabs block names it (`"content": { "mod": "configurator" }`); then its gear sits
+  next to Files / Changes, and clicking it, or `herdr-app do mod.open '{"name":
+  "configurator"}'`, opens the dialog; and `herdr-app shot` shows both.
 - The dialog lists every folder under `mods/` with `shipped` / `cloned` / `third_party` told
   apart, `better-config` among them as third party with unknown origin.
 - `Check updates` on a tracked entry lights its row dot when upstream is ahead and says
