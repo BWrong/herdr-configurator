@@ -12,6 +12,15 @@ import {
   scanText,
   detailOf,
   sizeText,
+  settingsFields,
+  settingsGroups,
+  parseDraft,
+  draftOf,
+  changedKeys,
+  savePlan,
+  mergeSettings,
+  keptShape,
+  carryOver,
   pushedText,
   galleryRowsOf,
   galleryPagePlan,
@@ -370,4 +379,225 @@ test("a failed refresh keeps the rows it had and carries the failure's text", ()
   assert.deepEqual(succeeded.rows, fresh);
   assert.equal(succeeded.fetchedAt, "2026-11-16T16:20:00.000Z");
   assert.equal(succeeded.error, null);
+});
+
+// Settings: the schema's leaves, the drafts, and what a save writes.
+
+const settingsSchema = {
+  properties: {
+    settings: {
+      type: "object",
+      properties: {
+        refresh: {
+          type: "object",
+          properties: {
+            status: {
+              title: "Git refresh",
+              description: "How often Git is read for changes.",
+              type: ["string", "integer"],
+              format: "duration",
+              pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$",
+              default: "10s",
+            },
+          },
+        },
+        limits: {
+          type: "object",
+          properties: {
+            files: { title: "Files shown", type: "integer", minimum: 1, default: 1000 },
+          },
+        },
+        default: {
+          type: "object",
+          properties: {
+            view: {
+              title: "File list",
+              description: "How file lists start.",
+              type: "string",
+              enum: ["tree", "flat"],
+              "x-labels": { tree: "Tree", flat: "Flat" },
+              default: "tree",
+            },
+            diff: {
+              title: "Diff",
+              type: "string",
+              enum: ["inline", "split"],
+              "x-labels": { inline: "Inline", split: "Side by side" },
+              default: "inline",
+            },
+          },
+        },
+        panel: {
+          type: "object",
+          properties: {
+            toggle: { title: "Key closes the panel", type: "boolean", default: false },
+          },
+        },
+      },
+    },
+  },
+};
+
+const topLevelSchema = {
+  properties: {
+    settings: {
+      type: "object",
+      properties: {
+        mode: { title: "Mode", type: "string", enum: ["a", "b"], default: "a" },
+        refresh: {
+          type: "object",
+          properties: { status: { type: "string", default: "10s" } },
+        },
+      },
+    },
+  },
+};
+
+test("settingsFields lists the schema's leaves in order with their type, default and description", () => {
+  const fields = settingsFields(settingsSchema);
+  assert.deepEqual(
+    fields.map((f) => [f.key, f.group, f.type]),
+    [
+      ["refresh.status", "refresh", "text"],
+      ["limits.files", "limits", "number"],
+      ["default.view", "default", "choice"],
+      ["default.diff", "default", "choice"],
+      ["panel.toggle", "panel", "boolean"],
+    ],
+  );
+  const view = fields.find((f) => f.key === "default.view");
+  assert.equal(view.title, "File list");
+  assert.equal(view.description, "How file lists start.");
+  assert.equal(view.default, "tree");
+  assert.deepEqual(view.choices, [
+    { value: "tree", label: "Tree" },
+    { value: "flat", label: "Flat" },
+  ]);
+  assert.equal(fields.find((f) => f.key === "limits.files").min, 1);
+  assert.equal(fields.find((f) => f.key === "refresh.status").pattern, "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$");
+});
+
+test("settingsFields reads an absent or empty settings object as no fields", () => {
+  assert.deepEqual(settingsFields(null), []);
+  assert.deepEqual(settingsFields({}), []);
+  assert.deepEqual(settingsFields({ properties: {} }), []);
+  assert.deepEqual(settingsFields({ properties: { settings: { type: "object" } } }), []);
+});
+
+test("settingsGroups groups by the first path segment, top-level keys first", () => {
+  const groups = settingsGroups(settingsFields(topLevelSchema));
+  assert.deepEqual(
+    groups.map((g) => [g.name, g.fields.map((f) => f.key)]),
+    [
+      ["", ["mode"]],
+      ["refresh", ["refresh.status"]],
+    ],
+  );
+});
+
+test("parseDraft turns typed text into the field's value or says why it can't", () => {
+  const [duration, files, view, toggle] = [
+    settingsFields(settingsSchema).find((f) => f.key === "refresh.status"),
+    settingsFields(settingsSchema).find((f) => f.key === "limits.files"),
+    settingsFields(settingsSchema).find((f) => f.key === "default.view"),
+    settingsFields(settingsSchema).find((f) => f.key === "panel.toggle"),
+  ];
+  assert.deepEqual(parseDraft(duration, "10s"), { value: "10s" });
+  assert.match(parseDraft(duration, "10x").error, /format/i);
+  assert.deepEqual(parseDraft(view, "flat"), { value: "flat" });
+  assert.match(parseDraft(view, "grid").error, /one of/i);
+  assert.deepEqual(parseDraft(files, "25"), { value: 25 });
+  assert.match(parseDraft(files, "0").error, /at least 1/i);
+  assert.match(parseDraft(files, "many").error, /number/i);
+  assert.deepEqual(parseDraft(toggle, true), { value: true });
+  assert.match(parseDraft(toggle, "true").error, /on or off/i);
+});
+
+test("draftOf starts every field at what the file says, else its default", () => {
+  const fields = settingsFields(settingsSchema);
+  assert.deepEqual(draftOf(fields, {}), {
+    "refresh.status": "10s",
+    "limits.files": "1000",
+    "default.view": "tree",
+    "default.diff": "inline",
+    "panel.toggle": false,
+  });
+  assert.deepEqual(draftOf(fields, { limits: { files: 25 }, panel: { toggle: true } }), {
+    "refresh.status": "10s",
+    "limits.files": "25",
+    "default.view": "tree",
+    "default.diff": "inline",
+    "panel.toggle": true,
+  });
+});
+
+test("changedKeys names only the fields whose draft differs from the file, defaults included", () => {
+  const fields = settingsFields(settingsSchema);
+  const drafts = draftOf(fields, {});
+  assert.deepEqual(changedKeys(fields, drafts, {}), []);
+  assert.deepEqual(changedKeys(fields, { ...drafts, "default.view": "flat" }, {}), ["default.view"]);
+  assert.deepEqual(changedKeys(fields, { ...drafts, "limits.files": "0" }, {}), ["limits.files"]);
+  assert.deepEqual(changedKeys(fields, drafts, { default: { view: "flat" } }), ["default.view"]);
+});
+
+test("savePlan writes only changed keys, leaves defaults out and never writes an invalid one", () => {
+  const fields = settingsFields(settingsSchema);
+  const drafts = { ...draftOf(fields, {}), "default.view": "flat", "refresh.status": "10x" };
+  const plan = savePlan(fields, drafts, {});
+  assert.deepEqual(plan.values, { "default.view": "flat" });
+  assert.deepEqual(plan.remove, []);
+  assert.deepEqual(Object.keys(plan.problems), ["refresh.status"]);
+  assert.match(plan.problems["refresh.status"], /format/i);
+
+  const backToDefault = savePlan(fields, draftOf(fields, {}), { default: { view: "flat" } });
+  assert.deepEqual(backToDefault.values, {});
+  assert.deepEqual(backToDefault.remove, ["default.view"]);
+  assert.deepEqual(backToDefault.problems, {});
+});
+
+test("mergeSettings updates only the changed keys and leaves every other key alone", () => {
+  const manifest = {
+    title: "Better Changes",
+    version: "2.5.0",
+    settings: { panel: { toggle: true }, limits: { files: 25 }, extra: 1 },
+  };
+  const merged = mergeSettings(manifest, {
+    values: { default: { view: "flat" } },
+    remove: ["panel.toggle"],
+  });
+  assert.equal(merged.title, "Better Changes");
+  assert.equal(merged.version, "2.5.0");
+  assert.deepEqual(merged.settings, { limits: { files: 25 }, extra: 1, default: { view: "flat" } });
+  assert.deepEqual(manifest, {
+    title: "Better Changes",
+    version: "2.5.0",
+    settings: { panel: { toggle: true }, limits: { files: 25 }, extra: 1 },
+  });
+});
+
+test("mergeSettings drops an empty settings block", () => {
+  const merged = mergeSettings({ title: "Bare", settings: { panel: { toggle: true } } }, {
+    values: {},
+    remove: ["panel.toggle"],
+  });
+  assert.deepEqual(merged, { title: "Bare" });
+});
+
+test("keptShape is the version and the values Herdr keeps outside the mod", () => {
+  assert.deepEqual(keptShape({ version: "2.5.0", settings: { default: { view: "flat" } } }), {
+    version: "2.5.0",
+    values: { default: { view: "flat" } },
+  });
+  assert.deepEqual(keptShape({ title: "No settings" }), { version: null, values: {} });
+});
+
+test("carryOver copies better-config's non-empty values once, never over an existing kept file", () => {
+  const legacy = '{"version":"2.5.0","values":{"limits":{"files":25}}}';
+  assert.deepEqual(carryOver(legacy, null), {
+    version: "2.5.0",
+    values: { limits: { files: 25 } },
+  });
+  assert.equal(carryOver(legacy, '{"version":"2.5.0","values":{}}'), null);
+  assert.equal(carryOver('{"version":"2.5.0","values":{}}', null), null);
+  assert.equal(carryOver("not json", null), null);
 });
