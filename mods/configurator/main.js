@@ -49,6 +49,10 @@ import {
   galleryCacheText,
   errorTextOf,
   refreshedGallery,
+  installFolderName,
+  modFolderOf,
+  declinedInstallText,
+  installedText,
 } from "./model.js";
 
 const GALLERY_TOPIC_URL = "https://api.github.com/search/repositories?q=topic:herdr-mod&per_page=100&page=";
@@ -90,6 +94,8 @@ export default class Configurator extends View {
     this.galleryRaw = null;
     this.galleryError = null;
     this.refreshing = false;
+    this.installing = null;
+    this.installNote = null;
     this.checkingUpdates = false;
     this.checkNote = "";
     this.forms = {};
@@ -118,9 +124,8 @@ export default class Configurator extends View {
   // until there is one to read), and the texts the Reference scan reads. Nothing is written
   // here and no file sizes are cached: those are read again each time a row is selected.
   async load() {
-    const listing = await exec("/bin/sh", ["-c", 'cd "$1" && ls -d */ 2>/dev/null', "sh", `${appHome()}/mods`]);
     const entries = [];
-    for (const name of folderNames(listing.stdout)) {
+    for (const name of await this.modsFolderNames()) {
       entries.push({
         name,
         modJson: await readTextFile(`${appHome()}/mods/${name}/mod.json`),
@@ -165,6 +170,36 @@ export default class Configurator extends View {
 
   galleryPath() {
     return `${appHome()}/data/configurator/gallery.json`;
+  }
+
+  // The folder names under mods/, which are the entries and the names an install must avoid.
+  async modsFolderNames() {
+    const listing = await exec("/bin/sh", ["-c", 'cd "$1" && ls -d */ 2>/dev/null', "sh", `${appHome()}/mods`]);
+    return folderNames(listing.stdout);
+  }
+
+  // sha256 of every file under a folder, keyed by its path. gpui-shell writes these into
+  // every mod folder when it loads one (see .gitignore), so they are not what arrived.
+  async hashFolder(folder) {
+    const listing = await exec("/bin/sh", ["-c", 'cd "$1" && find . -type f -print0 | xargs -0 shasum -a 256', "sh", folder]);
+    const files = hashesOf(listing.stdout);
+    for (const generated of ["gpui-kit.d.ts", "jsconfig.json"]) delete files[generated];
+    return files;
+  }
+
+  // The repository's default branch, one commit only, into a fresh folder under /tmp. The
+  // folder is returned with the failure too, so a failed install can say where it kept it.
+  async cloneIntoTemp(repo) {
+    const tail = String(repo).split("/")[1]?.replace(/[^A-Za-z0-9_.-]/g, "") || "mod";
+    const folder = `/tmp/configurator-install-${Date.now()}-${tail}`;
+    try {
+      await exec("git", ["clone", "--depth", "1", `https://github.com/${repo}`, folder]);
+      const commit = String((await exec("git", ["-C", folder, "rev-parse", "HEAD"])).stdout ?? "").trim();
+      const ref = String((await exec("git", ["-C", folder, "rev-parse", "--abbrev-ref", "HEAD"])).stdout ?? "").trim();
+      return { folder, commit, ref };
+    } catch (error) {
+      return { folder, error: error?.message ?? String(error) };
+    }
   }
 
   // One search page from GitHub, unauthenticated. A failed request carries the responder's
@@ -378,16 +413,12 @@ export default class Configurator extends View {
   async record(name, repo, ref) {
     if (checking()) return { note: "" };
     const folder = `${appHome()}/mods/${name}`;
-    let listing = null;
+    let files = null;
     try {
-      listing = await exec("/bin/sh", ["-c", 'cd "$1" && find . -type f -print0 | xargs -0 shasum -a 256', "sh", folder]);
+      files = await this.hashFolder(folder);
     } catch (error) {
       return { note: `Couldn't hash the entry: ${error?.message ?? error}` };
     }
-    const files = hashesOf(listing.stdout);
-    // gpui-shell writes these into every mod folder when it loads one (see .gitignore), so
-    // they are not what the entry arrived with.
-    for (const generated of ["gpui-kit.d.ts", "jsconfig.json"]) delete files[generated];
     if (!Object.keys(files).length) return { note: "This entry has no files to record." };
     let body = "";
     try {
@@ -491,6 +522,94 @@ export default class Configurator extends View {
       current ? `, ${current} up to date` : ""
     }${failed ? `, ${failed} failed: ${firstError?.error ?? "unknown error"}` : ", no failed lookups"}.`;
     this.detail = await this.detailFor(this.selected);
+    cx.notify();
+  }
+
+  // Install one gallery repository: clone its default branch to /tmp, copy the repository's
+  // mod folder into mods/ under a free name, hash what landed, record the ledger row, then
+  // check the folder. Nothing is written before the clone and the copy are in place, and a
+  // failure keeps the clone and reports the program's own text.
+  async installFrom(repo) {
+    const clone = await this.cloneIntoTemp(repo);
+    if (clone.error) return { error: `git clone failed: ${clone.error}`, temp: clone.folder };
+    const temp = clone.folder;
+    let folders = [];
+    try {
+      const listing = await exec("/bin/sh", ["-c", 'cd "$1/mods" 2>/dev/null && ls -d */ 2>/dev/null', "sh", temp]);
+      folders = folderNames(listing.stdout);
+    } catch (error) {
+      return { error: `Couldn't list the repository's mod folders: ${error?.message ?? error}`, temp };
+    }
+    const modFolder = modFolderOf(String(repo).split("/")[1], folders);
+    if (!modFolder) return { error: declinedInstallText(repo, folders), temp };
+    let taken = [];
+    try {
+      taken = await this.modsFolderNames();
+    } catch (error) {
+      return { error: `Couldn't list mods/: ${error?.message ?? error}`, temp };
+    }
+    const folder = installFolderName(modFolder, taken);
+    const dest = `${appHome()}/mods/${folder}`;
+    try {
+      await exec("cp", ["-R", `${temp}/mods/${modFolder}`, dest]);
+    } catch (error) {
+      return { error: `Couldn't copy mods/${modFolder}: ${error?.message ?? error}`, temp };
+    }
+    let files = {};
+    try {
+      files = await this.hashFolder(dest);
+    } catch (error) {
+      return { error: `Couldn't hash the installed files: ${error?.message ?? error}`, temp };
+    }
+    const ledgerFailure = await this.writeLedger((entries) =>
+      recordSource(entries, {
+        name: folder,
+        repo,
+        ref: clone.ref || "main",
+        commit: clone.commit,
+        files,
+      }),
+    );
+    if (ledgerFailure) return { error: ledgerFailure, temp };
+    try {
+      await exec("herdr-app", ["check", dest]);
+    } catch (error) {
+      return { error: `herdr-app check failed: ${error?.message ?? error}`, temp };
+    }
+    // The install stands even if the cleanup or the reload stumbles; say so separately.
+    try {
+      await exec("rm", ["-rf", temp]);
+    } catch {}
+    try {
+      await this.load();
+    } catch {}
+    return { installed: { name: folder, folder, repo, commit: clone.commit } };
+  }
+
+  // The gallery row's Install action. One at a time, never during a check run, and the row
+  // keeps the outcome — success says what landed where, failure the program's own error.
+  async install(row, cx) {
+    if (checking() || this.installing) return;
+    const repo = row?.repository;
+    if (typeof repo !== "string" || !repo.includes("/")) return;
+    this.installing = repo;
+    this.installNote = null;
+    cx.notify();
+    let result = null;
+    try {
+      result = await this.installFrom(repo);
+    } catch (error) {
+      result = { error: error?.message ?? String(error) };
+    }
+    this.installing = null;
+    this.installNote = {
+      repository: repo,
+      error: Boolean(result?.error),
+      text: result?.error
+        ? `${result.error}${result.temp ? ` The clone is kept at ${result.temp}.` : ""}`
+        : installedText(result.installed),
+    };
+    // Ticket #11 appends the repository's non-conflicting key bindings to this line.
     cx.notify();
   }
 
@@ -1099,9 +1218,9 @@ export default class Configurator extends View {
           .gap(8)
           .items_center()
           .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(`Pushed ${row.pushedAt}`))
-          // Where the Install action goes later; nothing installs from here yet.
           .child(
             div()
+              .id(`configurator-gallery-install-${row.repository}`)
               .h(22)
               .px(8)
               .flex()
@@ -1110,9 +1229,26 @@ export default class Configurator extends View {
               .border_1()
               .border_color(t.border)
               .text_size(11)
-              .text_color(t.dim)
-              .child("Install"),
+              .text_color(this.installing === row.repository ? t.dim : t.foreground)
+              .cursor_pointer()
+              .hover((s) => s.bg(t.hover))
+              .on_click((_e, cx) => {
+                if (checking() || this.installing) return;
+                cx.spawn(async (cx) => {
+                  await this.install(row, cx);
+                });
+              })
+              .child(this.installing === row.repository ? "Installing…" : "Install"),
           ),
+      )
+      .when(this.installNote?.repository === row.repository, (el) =>
+        el.child(
+          div()
+            .min_w(0)
+            .text_size(11)
+            .text_color(this.installNote.error ? t.blocked : t.dim)
+            .child(this.installNote.text),
+        ),
       );
   }
 
