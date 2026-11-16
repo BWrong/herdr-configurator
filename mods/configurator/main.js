@@ -1,8 +1,9 @@
-// Configurator: a 26 px strip at the bottom whose gear opens one dialog, and that dialog
-// lists every entry under mods/ with its Origin, or — in its second view — the GitHub topic's
-// installable mods. One folder, two copies: props().overlay is set only in the dialog copy.
+// Configurator: the tab bar's gear opens one dialog, and that dialog lists every entry under
+// mods/ with its Origin, or — in its second view — the GitHub topic's installable mods. One
+// folder, two copies: props().overlay is set only in the dialog copy; the docked copy draws
+// the tab bar (tabbar.js).
 
-import { View, div, svg } from "gpui-kit";
+import { View, div } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, InputState, Input, Select, Popup, Checkbox } from "gpui-base";
 import {
   appHome,
@@ -15,7 +16,6 @@ import {
   props,
   shared,
   setShared,
-  run,
   theme,
   layouts,
   keys,
@@ -74,10 +74,10 @@ import {
   updatedRow,
   updateTempPath,
 } from "./model.js";
+import Tabs from "./tabbar.js";
 
 const GALLERY_TOPIC_URL = "https://api.github.com/search/repositories?q=topic:herdr-mod&per_page=100&page=";
 
-const GEAR = "mods/configurator/icons/gear.svg";
 const ORIGIN_WORDS = { shipped: "shipped", cloned: "cloned", third_party: "third_party" };
 // A row's check state as a dot colour and as the word the detail pane says.
 const CHECK_DOTS = { moved: "accent", current: "border", failed: "ansi1" };
@@ -97,6 +97,9 @@ const asObject = (text) => parseObject(text) ?? {};
 export default class Configurator extends View {
   init(_given, cx) {
     this.overlay = props()?.overlay ?? null;
+    // The docked copy draws the tab bar; its init holds the scroll and panel state.
+    this.bar = this.overlay ? null : new Tabs();
+    this.bar?.init();
     this.rows = [];
     this.entries = [];
     this.ledger = {};
@@ -1207,33 +1210,6 @@ export default class Configurator extends View {
       : ORIGIN_WORDS[row.origin];
   }
 
-  // The docked copy: the gear and the name, nothing else.
-  strip(t) {
-    return h_flex()
-      .id("configurator-strip")
-      .size_full()
-      .items_center()
-      .justify_end()
-      .px(10)
-      .border_t(1)
-      .border_color(t.border)
-      .bg(t.chrome)
-      .child(
-        h_flex()
-          .id("configurator-open")
-          .h_full()
-          .gap(6)
-          .px(8)
-          .items_center()
-          .cursor_pointer()
-          .text_color(t.muted)
-          .hover((s) => s.text_color(t.accent))
-          .on_click(() => run("mod.open", { name: "configurator" }))
-          .child(svg(GEAR).size(14))
-          .child(div().text_size(12).child("Configurator")),
-      );
-  }
-
   seat(t, row) {
     const on = row.name === this.selected;
     return h_flex()
@@ -2175,8 +2151,8 @@ export default class Configurator extends View {
       );
   }
 
-  render(_cx) {
-    const t = theme();
-    return this.overlay ? this.dialog(t) : this.strip(t);
+  render(cx) {
+    if (!this.overlay) return this.bar.render(cx);
+    return this.dialog(theme());
   }
 }

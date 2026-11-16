@@ -2,8 +2,7 @@
   "$schema": "./mod.schema.json",
   "version": "0.1.0",
   "title": "Configurator",
-  "place": "bottom",
-  "size": 26,
+  "place": "none",
   "overlay": {
     "kind": "dialog",
     "width": 960,
