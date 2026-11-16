@@ -11,7 +11,7 @@ values are carried over once; the old mod is left in place.
 
 **The tab bar button.** The tab bar's gear, in the right-hand group after Files / Changes (and
   after a Git button on layouts that carry a `git-graph` panel):
-a 26 px square, rounded 6 px, the theme's `dim` gear at 14 px, hover `hover` and `foreground`
+a 26 px square, rounded 6 px, the theme's `muted` gear at 14 px, like the panel buttons' icons, hover `hover` and `foreground`
 like its neighbours, tooltip "Configurator". It is this mod docked (`place: "none"`): point
 the layout's tabs block at it — `"content": { "mod": "configurator" }` — and the gear appears
 there; nothing else is drawn.

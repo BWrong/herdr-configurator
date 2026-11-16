@@ -104,7 +104,7 @@ export default class Tabs extends View {
       if (active >= 0) this.scroll.scroll_to_item(active);
     }
     const stop = (_e, cx) => cx.stop_propagation();
-    const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
+    const button = (id, label, action, tone = t.dim) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(tone).hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(label);
     const item = (c, i) => {
       const lead = panes().find(p => p.tab === c.id && p.program?.agent) ?? panes().find(p => p.tab === c.id);
@@ -157,7 +157,7 @@ export default class Tabs extends View {
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
       // Only where the layout carries a git-graph panel, as tabs-graph assumes rather than asks.
       .when(body?.children?.some((c) => c.id === "graph"), el => el.child(panelButton("graph", "Git", "mods/git-graph/icons/graph.svg")))
-      .child(button("configurator", svg("mods/configurator/icons/gear.svg").size(14), () => run("mod.open", { name: "configurator" })).tooltip("Configurator"))
+      .child(button("configurator", svg("mods/configurator/icons/gear.svg").size(14), () => run("mod.open", { name: "configurator" }), t.muted).tooltip("Configurator"))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));
