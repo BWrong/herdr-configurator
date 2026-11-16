@@ -21,6 +21,12 @@ import {
   mergeSettings,
   keptShape,
   carryOver,
+  parseLedger,
+  ledgerJson,
+  normaliseRepo,
+  hashesOf,
+  commitOf,
+  recordSource,
 } from "./model.js";
 
 const GEAR = "mods/configurator/icons/gear.svg";
@@ -43,6 +49,9 @@ export default class Configurator extends View {
     this.rows = [];
     this.entries = [];
     this.ledger = {};
+    this.ledgerProblem = null;
+    this.installed = {};
+    this.sourceNote = "";
     this.layoutFiles = [];
     this.keys = [];
     this.selected = null;
@@ -59,6 +68,8 @@ export default class Configurator extends View {
         cx.notify();
       });
       this.input.focus();
+      this.sourceRepo = InputState.new({ placeholder: "owner/repo or a GitHub URL" });
+      this.sourceRef = InputState.new({ placeholder: "main" });
       this.handle = cx.focus_handle();
     }
     // A check loads and renders for real; it must read nothing.
@@ -83,11 +94,11 @@ export default class Configurator extends View {
       });
     }
     this.entries = entries;
-    this.ledger = asObject(await readTextFile(`${appHome()}/data/configurator/ledger.json`));
-    this.rows = rowsOf(entries, {
-      installed: asObject(await readTextFile(`${appHome()}/installed.json`)),
-      ledger: this.ledger,
-    });
+    const read = parseLedger(await readTextFile(`${appHome()}/data/configurator/ledger.json`));
+    this.ledger = read.entries;
+    this.ledgerProblem = read.problem;
+    this.installed = asObject(await readTextFile(`${appHome()}/installed.json`));
+    this.rows = rowsOf(entries, { installed: this.installed, ledger: this.ledger });
     this.layoutFiles = [];
     for (const name of layouts()) {
       this.layoutFiles.push({ name, text: await readTextFile(`${appHome()}/layouts/${name}.json`) });
@@ -230,6 +241,87 @@ export default class Configurator extends View {
       }
     }
     return `Couldn't save${failure?.message ? `: ${failure.message}` : "."}`;
+  }
+
+  // One ledger row, written conditionally: the file is re-read and the row merged on every
+  // attempt, so a ledger the person edited meanwhile keeps their changes. A ledger that
+  // reports a problem is left alone rather than replaced.
+  async writeLedger(pending) {
+    const folder = `${appHome()}/data/configurator`;
+    const path = `${folder}/ledger.json`;
+    let failure = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const raw = await readTextFile(path);
+      const read = parseLedger(raw);
+      if (read.problem) return read.problem;
+      const entries = recordSource(read.entries, pending);
+      try {
+        if (raw === null) await exec("/bin/sh", ["-c", 'mkdir -p "$1"', "sh", folder]);
+        await writeTextFile(path, ledgerJson(entries), raw);
+        this.ledger = entries;
+        this.rows = rowsOf(this.entries, { installed: this.installed, ledger: this.ledger });
+        return null;
+      } catch (error) {
+        failure = error?.message ?? String(error);
+      }
+    }
+    return `Couldn't write the ledger${failure ? `: ${failure}` : "."}`;
+  }
+
+  // Record an unknown-origin entry's source: hash every file it ships, resolve the ref's
+  // current commit (the one network call), then write the row. The ledger stays untouched.
+  async record(name, repo, ref) {
+    if (checking()) return { note: "" };
+    const folder = `${appHome()}/mods/${name}`;
+    let listing = null;
+    try {
+      listing = await exec("/bin/sh", ["-c", 'cd "$1" && find . -type f -print0 | xargs -0 shasum -a 256', "sh", folder]);
+    } catch (error) {
+      return { note: `Couldn't hash the entry: ${error?.message ?? error}` };
+    }
+    const files = hashesOf(listing.stdout);
+    // gpui-shell writes these into every mod folder when it loads one (see .gitignore), so
+    // they are not what the entry arrived with.
+    for (const generated of ["gpui-kit.d.ts", "jsconfig.json"]) delete files[generated];
+    if (!Object.keys(files).length) return { note: "This entry has no files to record." };
+    let body = "";
+    try {
+      const response = await fetch(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`, {
+        headers: { accept: "application/vnd.github+json" },
+      });
+      body = await response.text();
+    } catch (error) {
+      return { note: `Couldn't reach GitHub: ${error?.message ?? error}` };
+    }
+    const resolved = commitOf(body);
+    if (resolved.error) return { note: resolved.error };
+    const failure = await this.writeLedger({ name, repo, ref, commit: resolved.commit, files });
+    if (failure) return { note: failure };
+    return { note: `Recorded ${repo} @ ${resolved.commit.slice(0, 7)}.` };
+  }
+
+  startRecording(row, cx) {
+    if (checking() || !row?.unknown) return;
+    if (this.ledgerProblem) {
+      this.sourceNote = `Ledger: ${this.ledgerProblem}`;
+      cx.notify();
+      return;
+    }
+    const repo = normaliseRepo(this.sourceRepo.value());
+    if (!repo) {
+      this.sourceNote = "Enter owner/repo or a GitHub URL.";
+      cx.notify();
+      return;
+    }
+    const ref = String(this.sourceRef.value() ?? "").trim() || "main";
+    this.sourceNote = "Recording…";
+    cx.notify();
+    cx.spawn(async (cx) => {
+      const result = await this.record(row.name, repo, ref);
+      this.sourceNote = result.note;
+      if (this.selected === row.name) this.detail = await this.detailFor(row.name);
+      cx.notify();
+    });
   }
 
   save(form, cx) {
@@ -524,6 +616,9 @@ export default class Configurator extends View {
         this.selected = row.name;
         this.openSelect = null;
         this.hoveredField = null;
+        this.sourceNote = "";
+        this.sourceRepo.set_value("");
+        this.sourceRef.set_value("");
         cx.notify();
         cx.spawn(async (cx) => {
           const detail = await this.detailFor(row.name);
@@ -571,18 +666,20 @@ export default class Configurator extends View {
       )
       .child(div().font_family("JetBrains Mono").text_size(11).text_color(t.dim).child(detail.folder))
       .child(
-        h_flex()
-          .gap(10)
-          .items_center()
-          .child(
-            div()
-              .text_size(12)
-              .text_color(detail.repo || detail.commit ? t.foreground : t.dim)
-              .child(detail.provenanceText),
-          )
-          .when(Boolean(detail.lastChecked), (el) =>
-            el.child(div().text_size(11).text_color(t.dim).child(`checked ${detail.lastChecked}`)),
-          ),
+        detail.unknown
+          ? this.sourceRow(t, detail)
+          : h_flex()
+              .gap(10)
+              .items_center()
+              .child(
+                div()
+                  .text_size(12)
+                  .text_color(detail.repo || detail.commit ? t.foreground : t.dim)
+                  .child(detail.provenanceText),
+              )
+              .when(Boolean(detail.lastChecked), (el) =>
+                el.child(div().text_size(11).text_color(t.dim).child(`checked ${detail.lastChecked}`)),
+              ),
       )
       .child(
         h_flex()
@@ -606,8 +703,75 @@ export default class Configurator extends View {
             ),
           ),
       )
+      .when(Boolean(this.sourceNote), (el) =>
+        el.child(div().text_size(11).text_color(t.dim).child(this.sourceNote)),
+      )
+      .when(Boolean(this.ledgerProblem), (el) =>
+        el.child(div().text_size(11).text_color(t.ansi1).child(`Ledger: ${this.ledgerProblem}`)),
+      )
       .child(div().flex_1())
       .child(div().text_size(11).text_color(t.dim).child(detail.scanText));
+  }
+
+  // Unknown origin: the repository and ref to record, and the action that records them.
+  sourceRow(t, detail) {
+    return h_flex()
+      .gap(8)
+      .items_center()
+      .child(
+        div()
+          .flex_none()
+          .max_w(200)
+          .truncate()
+          .text_size(11)
+          .text_color(t.dim)
+          .child(detail.repo ? `Hint ${detail.repo}` : "Unknown origin"),
+      )
+      .child(
+        div()
+          .h(24)
+          .flex_1()
+          .min_w(140)
+          .px(6)
+          .flex()
+          .items_center()
+          .rounded(6)
+          .border_1()
+          .border_color(t.border)
+          .bg(t.background)
+          .child(Input.new(this.sourceRepo).h(22).w_full().text_size(11).text_color(t.foreground)),
+      )
+      .child(
+        div()
+          .h(24)
+          .w(84)
+          .flex_none()
+          .px(6)
+          .flex()
+          .items_center()
+          .rounded(6)
+          .border_1()
+          .border_color(t.border)
+          .bg(t.background)
+          .child(Input.new(this.sourceRef).h(22).w_full().text_size(11).text_color(t.foreground)),
+      )
+      .child(
+        div()
+          .id("configurator-record-source")
+          .flex_none()
+          .px(10)
+          .py(3)
+          .rounded(6)
+          .border_1()
+          .border_color(t.accent)
+          .bg(t.background)
+          .text_size(12)
+          .text_color(t.foreground)
+          .cursor_pointer()
+          .hover((s) => s.bg(t.hover))
+          .on_click((_e, cx) => this.startRecording(this.rows.find((row) => row.name === this.detail?.name), cx))
+          .child("Record source"),
+      );
   }
 
   // The dialog copy: the filter, then one row per entry.

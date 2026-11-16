@@ -157,6 +157,7 @@ export function detailOf(row, { folder = "", manifest = null, ledger = {}, files
     title: row.title,
     version: row.version ?? null,
     origin: row.origin,
+    unknown: Boolean(row.unknown),
     folder,
     repo,
     commit,
@@ -166,6 +167,113 @@ export function detailOf(row, { folder = "", manifest = null, ledger = {}, files
     scan,
     scanText: scanText(scan),
   };
+}
+
+// Ledger: the Configurator's own record of provenance, kept in its state directory. Its
+// entries map is what rowsOf, originOf and detailOf read; writes go through ledgerJson.
+
+const LEDGER_VERSION = 1;
+
+// A ledger file as read: its entries (empty when nothing readable is there) and the problem
+// to report when the file is not a version 1 ledger. Nothing is ever written over a ledger
+// that reports a problem.
+export function parseLedger(raw) {
+  const text = typeof raw === "string" ? raw : "";
+  if (!text.trim()) return { entries: {}, problem: null };
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { entries: {}, problem: "ledger.json is not valid JSON." };
+  }
+  if (!isObject(parsed)) return { entries: {}, problem: "ledger.json is not an object." };
+  if (parsed.version !== LEDGER_VERSION)
+    return {
+      entries: {},
+      problem: `ledger.json has version ${JSON.stringify(parsed.version ?? null)}; only version ${LEDGER_VERSION} is read.`,
+    };
+  if (!isObject(parsed.entries)) return { entries: {}, problem: "ledger.json has no entries object." };
+  const entries = {};
+  const broken = [];
+  for (const [name, row] of Object.entries(parsed.entries)) {
+    if (isObject(row)) entries[name] = row;
+    else broken.push(name);
+  }
+  if (broken.length)
+    return {
+      entries,
+      problem: `ledger.json has ${broken.length} malformed ${broken.length === 1 ? "entry" : "entries"} (${broken.join(", ")}); fix it by hand.`,
+    };
+  return { entries, problem: null };
+}
+
+// The ledger file's text: version 1, entries sorted by name, two-space indent, final newline.
+export function ledgerJson(entries) {
+  const sorted = {};
+  for (const name of Object.keys(isObject(entries) ? entries : {}).sort()) sorted[name] = entries[name];
+  return `${JSON.stringify({ version: LEDGER_VERSION, entries: sorted }, null, 2)}\n`;
+}
+
+// `owner/repo` from what a person typed: a bare pair, a GitHub URL, or a clone URL. Anything
+// else (no owner, a deeper path, another host) is not a repository to record.
+export function normaliseRepo(text) {
+  let value = typeof text === "string" ? text.trim() : "";
+  if (!value) return null;
+  value = value
+    .replace(/^git@github\.com:/i, "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/^github\.com\//i, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "");
+  const match = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(value);
+  return match ? `${match[1]}/${match[2]}` : null;
+}
+
+// One `sha256:<hex>` per file, keyed by the path relative to the entry, from `shasum -a 256`
+// output (`<hex>  ./<path>`, or `<hex> *<path>` from GNU tools).
+export function hashesOf(output) {
+  const files = {};
+  for (const line of String(output ?? "").split("\n")) {
+    const match = /^([0-9a-f]{64}) [ *](.+)$/.exec(line.trimEnd());
+    if (!match) continue;
+    const name = match[2].replace(/^\.\//, "");
+    if (name) files[name] = `sha256:${match[1]}`;
+  }
+  const sorted = {};
+  for (const name of Object.keys(files).sort()) sorted[name] = files[name];
+  return sorted;
+}
+
+// The commit a `GET /repos/{owner}/{repo}/commits/{ref}` response names, or the responder's
+// own message, verbatim, when it names none.
+export function commitOf(text) {
+  let body = null;
+  try {
+    body = JSON.parse(text);
+  } catch {}
+  if (!isObject(body)) return { error: "The response was not JSON." };
+  if (typeof body.message === "string" && body.message) return { error: body.message };
+  if (typeof body.sha === "string" && /^[0-9a-f]{40}$/i.test(body.sha)) return { commit: body.sha.toLowerCase() };
+  return { error: "The response had no commit sha." };
+}
+
+// The entries with `name` recorded as a third-party mod at that repository, ref, commit and
+// per-file hashes. Recording again replaces the row and keeps the first install time.
+export function recordSource(entries, { name, repo, ref = "main", commit, files = {}, now = Date.now() } = {}) {
+  const previous = isObject(entries?.[name]) ? entries[name] : {};
+  const row = {
+    kind: "mod",
+    origin: "third_party",
+    repo,
+    ref,
+    commit,
+    checkedAt: now,
+    installedAt: typeof previous.installedAt === "number" ? previous.installedAt : now,
+    files,
+  };
+  return { ...(isObject(entries) ? entries : {}), [name]: row };
 }
 
 // Settings: the form a mod.schema.json describes, the person's drafts, and what a save

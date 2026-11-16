@@ -21,6 +21,12 @@ import {
   mergeSettings,
   keptShape,
   carryOver,
+  parseLedger,
+  ledgerJson,
+  normaliseRepo,
+  hashesOf,
+  commitOf,
+  recordSource,
 } from "./model.js";
 
 const installed = { help: { "main.js": "hash" } };
@@ -496,4 +502,184 @@ test("carryOver copies better-config's non-empty values once, never over an exis
   assert.equal(carryOver(legacy, '{"version":"2.5.0","values":{}}'), null);
   assert.equal(carryOver('{"version":"2.5.0","values":{}}', null), null);
   assert.equal(carryOver("not json", null), null);
+});
+
+// Ledger: parse with its version gate, serialise, and the pure steps of recording a source.
+
+const HEX = "abcdef1234567890abcdef1234567890abcdef12";
+const HEX2 = "0123456789abcdef0123456789abcdef01234567";
+const digest = (digit) => digit.repeat(64);
+
+const ledgerSample = {
+  version: 1,
+  entries: {
+    "better-changes": {
+      kind: "mod",
+      origin: "third_party",
+      repo: "BWrong/better-changes",
+      ref: "main",
+      commit: HEX,
+      checkedAt: 1794000000000,
+      installedAt: 1794000000000,
+      files: { "main.js": `sha256:${digest("a")}`, "mod.json": `sha256:${digest("b")}` },
+    },
+  },
+};
+
+test("parseLedger reads a version 1 ledger's entries", () => {
+  const read = parseLedger(JSON.stringify(ledgerSample));
+  assert.equal(read.problem, null);
+  assert.deepEqual(read.entries, ledgerSample.entries);
+});
+
+test("parseLedger treats an absent or blank ledger as empty and unproblematic", () => {
+  assert.deepEqual(parseLedger(null), { entries: {}, problem: null });
+  assert.deepEqual(parseLedger(undefined), { entries: {}, problem: null });
+  assert.deepEqual(parseLedger("  \n"), { entries: {}, problem: null });
+});
+
+test("parseLedger reports malformed JSON and reads nothing from it", () => {
+  const read = parseLedger('{"version":1,"entries":');
+  assert.deepEqual(read.entries, {});
+  assert.match(read.problem, /not valid JSON/i);
+});
+
+test("parseLedger reports a ledger whose version is not 1 and reads nothing from it", () => {
+  const read = parseLedger('{"version":2,"entries":{"x":{"repo":"a/b"}}}');
+  assert.deepEqual(read.entries, {});
+  assert.match(read.problem, /version 2/i);
+  assert.match(parseLedger("[]").problem, /not an object/i);
+});
+
+test("parseLedger reports an entries map that is missing or not an object", () => {
+  assert.match(parseLedger('{"version":1}').problem, /entries/i);
+  assert.match(parseLedger('{"version":1,"entries":[]}').problem, /entries/i);
+});
+
+test("parseLedger keeps the good rows and names the malformed ones it dropped", () => {
+  const read = parseLedger('{"version":1,"entries":{"good":{"repo":"a/b"},"bad":"nope"}}');
+  assert.deepEqual(read.entries, { good: { repo: "a/b" } });
+  assert.match(read.problem, /bad/);
+});
+
+test("ledgerJson writes version 1, entries sorted by name, and a final newline", () => {
+  const text = ledgerJson({ zeta: { repo: "a/b" }, alpha: { repo: "c/d" } });
+  assert.ok(text.endsWith("\n"));
+  assert.equal(JSON.parse(text).version, 1);
+  assert.ok(text.indexOf('"alpha"') < text.indexOf('"zeta"'));
+  assert.deepEqual(parseLedger(text).entries, { zeta: { repo: "a/b" }, alpha: { repo: "c/d" } });
+});
+
+test("ledgerJson round-trips a full entry unchanged", () => {
+  assert.deepEqual(parseLedger(ledgerJson(ledgerSample.entries)).entries, ledgerSample.entries);
+});
+
+test("normaliseRepo accepts owner/repo and the usual GitHub spellings", () => {
+  assert.equal(normaliseRepo("BWrong/better-changes"), "BWrong/better-changes");
+  assert.equal(normaliseRepo("  BWrong/better-changes  "), "BWrong/better-changes");
+  assert.equal(normaliseRepo("https://github.com/BWrong/better-changes"), "BWrong/better-changes");
+  assert.equal(normaliseRepo("https://github.com/BWrong/better-changes.git"), "BWrong/better-changes");
+  assert.equal(normaliseRepo("https://github.com/BWrong/better-changes/"), "BWrong/better-changes");
+  assert.equal(normaliseRepo("github.com/BWrong/better-changes"), "BWrong/better-changes");
+  assert.equal(normaliseRepo("git@github.com:BWrong/better-changes.git"), "BWrong/better-changes");
+});
+
+test("normaliseRepo rejects anything that is not one owner and one repository", () => {
+  assert.equal(normaliseRepo(""), null);
+  assert.equal(normaliseRepo(null), null);
+  assert.equal(normaliseRepo("better-changes"), null);
+  assert.equal(normaliseRepo("owner/repo/extra"), null);
+  assert.equal(normaliseRepo("https://example.com/owner/repo"), null);
+  assert.equal(normaliseRepo("not a repo"), null);
+});
+
+test("hashesOf reads shasum lines into sha256 hashes keyed by the entry's paths", () => {
+  const output = [
+    `${digest("a")}  ./main.js`,
+    `${digest("b")}  ./icons/gear.svg`,
+    `${digest("c")} *./mod.json`,
+    "shasum: ./gone.js: No such file or directory",
+    "",
+  ].join("\n");
+  assert.deepEqual(hashesOf(output), {
+    "icons/gear.svg": `sha256:${digest("b")}`,
+    "main.js": `sha256:${digest("a")}`,
+    "mod.json": `sha256:${digest("c")}`,
+  });
+});
+
+test("hashesOf keeps a file name with spaces and reads nothing from junk", () => {
+  assert.deepEqual(hashesOf(`${digest("d")}  ./my long name.txt`), {
+    "my long name.txt": `sha256:${digest("d")}`,
+  });
+  assert.deepEqual(hashesOf(""), {});
+  assert.deepEqual(hashesOf(null), {});
+});
+
+test("commitOf reads the 40 hex sha from GitHub's commit response", () => {
+  assert.deepEqual(commitOf(JSON.stringify({ sha: HEX })), { commit: HEX });
+});
+
+test("commitOf surfaces the responder's own message verbatim", () => {
+  const message = "API rate limit exceeded for 1.2.3.4. (But here's the good news: Authenticated requests get a higher rate limit.)";
+  assert.deepEqual(commitOf(JSON.stringify({ message })), { error: message });
+});
+
+test("commitOf refuses a response without a 40 hex commit", () => {
+  assert.match(commitOf(JSON.stringify({ sha: "abc" })).error, /commit/i);
+  assert.match(commitOf("not json").error, /JSON/i);
+  assert.match(commitOf("[]").error, /JSON/i);
+});
+
+test("recording a source writes kind, origin, repo, ref, commit, per-file hashes and the times", () => {
+  const files = { "main.js": `sha256:${digest("a")}` };
+  const entries = recordSource({}, { name: "better-config", repo: "BWrong/better-config", ref: "main", commit: HEX, files, now: 1794000000000 });
+  assert.deepEqual(entries, {
+    "better-config": {
+      kind: "mod",
+      origin: "third_party",
+      repo: "BWrong/better-config",
+      ref: "main",
+      commit: HEX,
+      checkedAt: 1794000000000,
+      installedAt: 1794000000000,
+      files,
+    },
+  });
+});
+
+test("recording again updates the row in place and keeps its install time", () => {
+  const first = recordSource(
+    {},
+    { name: "better-config", repo: "o/r", ref: "main", commit: HEX, files: { "main.js": "sha256:1" }, now: 100 },
+  );
+  const second = recordSource(first, {
+    name: "better-config",
+    repo: "o/r",
+    ref: "v2",
+    commit: HEX2,
+    files: { "mod.json": "sha256:2" },
+    now: 500,
+  });
+  assert.deepEqual(Object.keys(second), ["better-config"]);
+  assert.equal(second["better-config"].installedAt, 100);
+  assert.equal(second["better-config"].checkedAt, 500);
+  assert.equal(second["better-config"].ref, "v2");
+  assert.equal(second["better-config"].commit, HEX2);
+  assert.deepEqual(second["better-config"].files, { "mod.json": "sha256:2" });
+});
+
+test("a recorded entry lists as third party with known provenance and feeds the detail pane", () => {
+  const entries = recordSource({}, { name: "x", repo: "o/r", ref: "main", commit: HEX, files: {}, now: 5 });
+  const rows = rowsOf([{ name: "x", modJson: '{"title":"X"}' }], { ledger: entries });
+  assert.equal(rows[0].origin, "third_party");
+  assert.equal(rows[0].unknown, false);
+  const detail = detailOf(rows[0], { ledger: entries });
+  assert.equal(detail.unknown, false);
+  assert.equal(detail.provenanceText, `o/r @ ${HEX.slice(0, 7)}`);
+});
+
+test("an untouched third-party entry is still marked unknown in the detail pane", () => {
+  const rows = rowsOf([{ name: "hand-made", modJson: '{"title":"Hand made"}' }], {});
+  assert.equal(detailOf(rows[0], { folder: "mods/hand-made" }).unknown, true);
 });
