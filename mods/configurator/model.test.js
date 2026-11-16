@@ -42,6 +42,11 @@ import {
   modFolderOf,
   declinedInstallText,
   installedText,
+  trashStamp,
+  trashPath,
+  confirmScanText,
+  uninstallOf,
+  withoutEntry,
 } from "./model.js";
 
 const installed = { help: { "main.js": "hash" } };
@@ -794,6 +799,126 @@ test("a recorded entry lists as third party with known provenance and feeds the 
 test("an untouched third-party entry is still marked unknown in the detail pane", () => {
   const rows = rowsOf([{ name: "hand-made", modJson: '{"title":"Hand made"}' }], {});
   assert.equal(detailOf(rows[0], { folder: "mods/hand-made" }).unknown, true);
+});
+
+// --- Uninstall: the Reference scan in the confirm panel, the trash plan, the ledger row. ---
+
+const uninstallRows = rowsOf(
+  [
+    { name: "better-changes", modJson: '{"title":"Better Changes","version":"0.2.0"}' },
+    { name: "catppuccin-status", modJson: '{"title":"Catppuccin Status","cloned_from":{"name":"workspace-status"}}' },
+    { name: "help", modJson: '{"title":"Help"}' },
+  ],
+  { installed, ledger: { "better-changes": { repository: "BWrong/better-changes", commit: HEX } } },
+);
+
+const scanOf = (row) =>
+  detailOf(row, {
+    folder: `mods/${row.name}`,
+    ledger: { "better-changes": { repository: "BWrong/better-changes", commit: HEX } },
+    layouts: [
+      { name: "main", text: '{"children":[{"content":{"mod":"better-changes"}}]}' },
+      { name: "terminals", text: '{"children":[{"content":{"mod":"better-changes"}}]}' },
+    ],
+    keys: [
+      { section: "mod:better-changes", keys: "cmd-shift-x", action: "better-changes:check" },
+      { section: "mod:better-changes", keys: "alt-x", action: "better-changes:open" },
+    ],
+  });
+
+test("trashStamp names a folder by the time, filesystem-safe and to the second", () => {
+  assert.equal(trashStamp(Date.UTC(2026, 10, 16, 16, 26, 19)), "2026-11-16T16-26-19Z");
+  assert.equal(trashStamp(Date.UTC(2026, 0, 2, 3, 4, 5)), "2026-01-02T03-04-05Z");
+});
+
+test("trashPath puts the entry's folder under the time inside the trash", () => {
+  assert.equal(
+    trashPath("better-changes", { now: Date.UTC(2026, 10, 16, 16, 26, 19), trash: "data/configurator/trash" }),
+    "data/configurator/trash/2026-11-16T16-26-19Z/better-changes",
+  );
+});
+
+test("the confirm panel counts the layouts and key sections that reference the entry", () => {
+  assert.equal(
+    confirmScanText("better-changes", {
+      layouts: ["main", "terminals", "win98"],
+      keys: [
+        { keys: "cmd-shift-x", action: "better-changes:check" },
+        { keys: "alt-x", action: "better-changes:open" },
+      ],
+    }),
+    "3 layouts reference this entry: main, terminals, win98. " +
+      "1 key section is bound to this entry: mod:better-changes " +
+      "(cmd-shift-x → better-changes:check, alt-x → better-changes:open).",
+  );
+  assert.equal(
+    confirmScanText("tabs", { layouts: ["main"], keys: [{ keys: "alt-x", action: "tabs:go" }] }),
+    "1 layout references this entry: main. 1 key section is bound to this entry: mod:tabs (alt-x → tabs:go).",
+  );
+  assert.equal(
+    confirmScanText("tabs", { layouts: [], keys: [] }),
+    "No layout references this entry. No key section is bound to this entry.",
+  );
+});
+
+test("a third-party entry's uninstall plan names the source, the trash destination and the panel text", () => {
+  const plan = uninstallOf(scanOf(uninstallRows.find((row) => row.name === "better-changes")), {
+    now: Date.UTC(2026, 10, 16, 16, 26, 19),
+    mods: "mods",
+    trash: "data/configurator/trash",
+  });
+  assert.equal(plan.allowed, true);
+  assert.equal(plan.reason, null);
+  assert.equal(plan.note, null);
+  assert.equal(plan.source, "mods/better-changes");
+  assert.equal(plan.trashFolder, "data/configurator/trash/2026-11-16T16-26-19Z");
+  assert.equal(plan.destination, "data/configurator/trash/2026-11-16T16-26-19Z/better-changes");
+  assert.equal(
+    plan.scanText,
+    "2 layouts reference this entry: main, terminals. " +
+      "1 key section is bound to this entry: mod:better-changes " +
+      "(cmd-shift-x → better-changes:check, alt-x → better-changes:open).",
+  );
+  assert.equal(
+    plan.moveText,
+    "Nothing is deleted: better-changes moves to data/configurator/trash/2026-11-16T16-26-19Z/better-changes, and its ledger row is dropped.",
+  );
+});
+
+test("a shipped entry offers no uninstall and says Herdr restores it", () => {
+  const detail = detailOf(uninstallRows.find((row) => row.name === "help"), { folder: "mods/help" });
+  const plan = uninstallOf(detail);
+  assert.equal(plan.allowed, false);
+  assert.match(plan.reason, /Herdr restores/);
+  assert.equal(plan.destination, null);
+  assert.equal(plan.moveText, null);
+});
+
+test("a cloned entry is a copy that never follows upstream, and can still go", () => {
+  const plan = uninstallOf(scanOf(uninstallRows.find((row) => row.name === "catppuccin-status")));
+  assert.equal(plan.allowed, true);
+  assert.equal(plan.reason, null);
+  assert.equal(plan.note, "This entry is a copy; it never follows upstream.");
+  assert.ok(plan.destination.endsWith("/catppuccin-status"));
+});
+
+test("an uninstall plan with no scan says none in both halves", () => {
+  const row = rowsOf([{ name: "bare", modJson: null }], {})[0];
+  const plan = uninstallOf(detailOf(row, { folder: "mods/bare" }));
+  assert.equal(plan.scanText, "No layout references this entry. No key section is bound to this entry.");
+});
+
+test("withoutEntry drops only that entry's ledger row", () => {
+  const entries = {
+    "better-changes": { repo: "BWrong/better-changes", commit: HEX },
+    "hand-made": { repo: "someone/hand-made", commit: HEX2 },
+  };
+  assert.deepEqual(withoutEntry(entries, "better-changes"), { "hand-made": entries["hand-made"] });
+  assert.deepEqual(withoutEntry(entries, "never-recorded"), entries);
+  assert.deepEqual(entries, {
+    "better-changes": { repo: "BWrong/better-changes", commit: HEX },
+    "hand-made": { repo: "someone/hand-made", commit: HEX2 },
+  });
 });
 
 // --- Update checks: which entries to ask upstream about, what the answer means, and the

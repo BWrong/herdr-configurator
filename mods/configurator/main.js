@@ -17,6 +17,7 @@ import {
   theme,
   layouts,
   keys,
+  notify,
 } from "herdr";
 import {
   folderNames,
@@ -53,6 +54,9 @@ import {
   modFolderOf,
   declinedInstallText,
   installedText,
+  uninstallOf,
+  withoutEntry,
+  refusalOf,
 } from "./model.js";
 
 const GALLERY_TOPIC_URL = "https://api.github.com/search/repositories?q=topic:herdr-mod&per_page=100&page=";
@@ -101,6 +105,9 @@ export default class Configurator extends View {
     this.forms = {};
     this.openSelect = null;
     this.hoveredField = null;
+    this.uninstall = null;
+    this.uninstallError = "";
+    this.uninstalling = false;
     if (this.overlay) {
       this.input = InputState.new({ placeholder: "Filter entries…" });
       this.input.on("change", (_e, cx) => {
@@ -1014,7 +1021,159 @@ export default class Configurator extends View {
         el.child(div().text_size(11).text_color(t.ansi1).child(`Ledger: ${this.ledgerProblem}`)),
       )
       .child(div().flex_1())
-      .child(div().text_size(11).text_color(t.dim).child(detail.scanText));
+      .child(this.uninstallRow(t, detail));
+  }
+
+  // The Reference scan's line, and the Uninstall action. A shipped entry says why it has
+  // none; every other Origin opens the confirm panel and moves nothing until it is pressed.
+  uninstallRow(t, detail) {
+    const plan = this.uninstall?.name === detail.name ? this.uninstall : null;
+    const refusal = refusalOf(detail.origin);
+    const trigger = refusal
+      ? div().text_size(11).text_color(t.dim).child(refusal)
+      : div()
+          .id(`configurator-uninstall-${detail.name}`)
+          .flex_none()
+          .px(10)
+          .py(3)
+          .rounded(6)
+          .border_1()
+          .border_color(t.border)
+          .bg(t.background)
+          .text_size(12)
+          .text_color(this.uninstalling ? t.dim : t.foreground)
+          .cursor_pointer()
+          .hover((s) => s.bg(t.hover))
+          .on_click((_e, cx) => this.openUninstall(detail, cx))
+          .child("Uninstall");
+    return h_flex()
+      .w_full()
+      .gap(8)
+      .items_center()
+      .child(div().flex_1().min_w(0).text_size(11).text_color(t.dim).child(detail.scanText))
+      .child(
+        Popup.new(`configurator-uninstall-popup-${detail.name}`, trigger)
+          .anchor("top_right")
+          .when(Boolean(plan), (el) => el.content(this.confirmPanel(t, plan))),
+      );
+  }
+
+  // The confirm panel lists the Reference scan, where the folder goes, and an explicit
+  // Cancel. Nothing moves before Move to trash is pressed; a failed move keeps it open.
+  confirmPanel(t, plan) {
+    return v_flex()
+      .id("configurator-uninstall-panel")
+      .w(360)
+      .p(12)
+      .gap(6)
+      .rounded(8)
+      .border_1()
+      .border_color(t.border)
+      .bg(t.popover)
+      .child(div().text_size(13).text_color(t.foreground).child(`Uninstall ${plan.name}?`))
+      .child(div().line_height("15px").text_size(11).text_color(t.muted).child(plan.scanText))
+      .when(Boolean(plan.note), (el) =>
+        el.child(div().line_height("15px").text_size(11).text_color(t.dim).child(plan.note)),
+      )
+      .child(div().line_height("15px").text_size(11).text_color(t.dim).child(plan.moveText))
+      .when(Boolean(this.uninstallError), (el) =>
+        el.child(div().line_height("15px").text_size(11).text_color(t.blocked).child(this.uninstallError)),
+      )
+      .child(
+        h_flex()
+          .justify_end()
+          .gap(8)
+          .child(
+            div()
+              .id("configurator-uninstall-cancel")
+              .px(10)
+              .py(3)
+              .rounded(6)
+              .border_1()
+              .border_color(t.border)
+              .text_size(12)
+              .text_color(t.foreground)
+              .cursor_pointer()
+              .hover((s) => s.bg(t.hover))
+              .on_click((_e, cx) => this.cancelUninstall(cx))
+              .child("Cancel"),
+          )
+          .child(
+            div()
+              .id("configurator-uninstall-confirm")
+              .px(10)
+              .py(3)
+              .rounded(6)
+              .bg(t.solid)
+              .text_size(12)
+              .text_color(t.solid_foreground)
+              .cursor_pointer()
+              .on_click((_e, cx) => this.confirmUninstall(plan, cx))
+              .child(this.uninstalling ? "Moving…" : "Move to trash"),
+          ),
+      );
+  }
+
+  openUninstall(detail, cx) {
+    if (checking() || this.uninstalling) return;
+    this.uninstallError = "";
+    this.uninstall = uninstallOf(detail, {
+      now: Date.now(),
+      mods: `${appHome()}/mods`,
+      trash: `${appHome()}/data/configurator/trash`,
+    });
+    cx.notify();
+  }
+
+  cancelUninstall(cx) {
+    if (this.uninstalling) return;
+    this.uninstall = null;
+    this.uninstallError = "";
+    cx.notify();
+  }
+
+  confirmUninstall(plan, cx) {
+    if (checking() || this.uninstalling) return;
+    this.uninstalling = true;
+    this.uninstallError = "";
+    cx.notify();
+    cx.spawn(async (cx) => {
+      const outcome = await this.moveToTrash(plan);
+      this.uninstalling = false;
+      if (outcome.error) {
+        this.uninstallError = outcome.error;
+        notify({ title: "Uninstall failed", body: outcome.error, level: "error" });
+      } else {
+        this.uninstall = null;
+        await this.load();
+        notify({
+          title: "Uninstalled",
+          body: outcome.ledgerError
+            ? `${plan.name} moved to ${plan.destination}, but ${outcome.ledgerError}`
+            : `${plan.name} moved to ${plan.destination}.`,
+          level: outcome.ledgerError ? "warning" : "success",
+        });
+      }
+      cx.notify();
+    });
+  }
+
+  // The move itself: make the time folder, mv the entry into it, and only then drop the
+  // ledger row. A failed move leaves the entry and the ledger as they were.
+  async moveToTrash(plan) {
+    try {
+      await exec("/bin/sh", ["-c", 'mkdir -p "$1"', "sh", plan.trashFolder]);
+      await exec("/bin/sh", ["-c", 'mv "$1" "$2"', "sh", plan.source, plan.destination]);
+    } catch (error) {
+      return { error: error?.message ?? String(error), ledgerError: null };
+    }
+    return { error: null, ledgerError: await this.removeLedgerRow(plan.name) };
+  }
+
+  // Drop one ledger row through the same conditional writer as any other ledger change,
+  // re-reading the file on every attempt. Only called after the folder actually moved.
+  async removeLedgerRow(name) {
+    return this.writeLedger((entries) => withoutEntry(entries, name));
   }
 
   // Unknown origin: the repository and ref to record, and the action that records them.

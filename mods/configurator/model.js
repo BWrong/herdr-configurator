@@ -259,6 +259,88 @@ export function detailOf(row, { folder = "", manifest = null, ledger = {}, files
   };
 }
 
+// Uninstall: what the confirm panel says, where the folder goes, and the ledger row it
+// takes with it. Nothing here touches the disk; main.js performs the move.
+
+const pad2 = (value) => String(value).padStart(2, "0");
+
+// The time a trash folder is named after: UTC to the second, filesystem-safe.
+export function trashStamp(now = Date.now()) {
+  const date = new Date(now);
+  return (
+    `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}` +
+    `T${pad2(date.getUTCHours())}-${pad2(date.getUTCMinutes())}-${pad2(date.getUTCSeconds())}Z`
+  );
+}
+
+// The folder an uninstalled entry moves to: trash/<time>/<name>. Never deleted.
+export function trashPath(name, { now = Date.now(), trash = "data/configurator/trash" } = {}) {
+  return `${trash}/${trashStamp(now)}/${name}`;
+}
+
+// The Reference scan in the confirm panel's words: how many layouts name the entry and
+// how many key sections are bound to it, with "none" when neither is.
+export function confirmScanText(name, { layouts = [], keys = [] } = {}) {
+  const layoutPart =
+    layouts.length === 0
+      ? "No layout references this entry."
+      : `${layouts.length} layout${layouts.length === 1 ? " references" : "s reference"} this entry: ${layouts.join(", ")}.`;
+  const keyPart =
+    keys.length === 0
+      ? "No key section is bound to this entry."
+      : `1 key section is bound to this entry: mod:${name} (${keys.map((key) => `${key.keys} → ${key.action}`).join(", ")}).`;
+  return `${layoutPart} ${keyPart}`;
+}
+
+// Why an Origin offers no uninstall, or null when it can be moved. Herdr rewrites its own
+// files on every start, so removing a shipped entry would only hide it until then.
+export function refusalOf(origin) {
+  return origin === "shipped"
+    ? "Herdr restores its own shipped entries on the next start; there is nothing to uninstall."
+    : null;
+}
+
+// The explanation a cloned entry carries: it is a copy, not a failure.
+export function uninstallNoteOf(origin) {
+  return origin === "cloned" ? "This entry is a copy; it never follows upstream." : null;
+}
+
+// Everything the confirm panel needs for one entry: the Reference scan's answer, the
+// source → destination of the move, and the reason an Origin refuses it. Nothing moves
+// until the person presses the panel's own button.
+export function uninstallOf(detail, { now = Date.now(), mods = "mods", trash = "data/configurator/trash" } = {}) {
+  const name = typeof detail?.name === "string" ? detail.name : "";
+  const origin = detail?.origin ?? "third_party";
+  const scan = { layouts: detail?.scan?.layouts ?? [], keys: detail?.scan?.keys ?? [] };
+  const reason = refusalOf(origin);
+  const allowed = reason === null;
+  const source = allowed ? `${mods}/${name}` : null;
+  const destination = allowed ? trashPath(name, { now, trash }) : null;
+  const trashFolder = destination ? destination.replace(/\/[^/]+$/, "") : null;
+  return {
+    name,
+    origin,
+    allowed,
+    reason,
+    note: uninstallNoteOf(origin),
+    scan,
+    scanText: confirmScanText(name, scan),
+    source,
+    trashFolder,
+    destination,
+    moveText: allowed
+      ? `Nothing is deleted: ${name} moves to ${destination}, and its ledger row is dropped.`
+      : null,
+  };
+}
+
+// The ledger without one entry, every other row untouched.
+export function withoutEntry(entries, name) {
+  const out = { ...(isObject(entries) ? entries : {}) };
+  delete out[name];
+  return out;
+}
+
 // Ledger: the Configurator's own record of provenance, kept in its state directory. Its
 // entries map is what rowsOf, originOf and detailOf read; writes go through ledgerJson.
 
