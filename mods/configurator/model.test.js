@@ -27,6 +27,13 @@ import {
   hashesOf,
   commitOf,
   recordSource,
+  pushedText,
+  galleryRowsOf,
+  galleryPagePlan,
+  galleryCacheOf,
+  galleryCacheText,
+  errorTextOf,
+  refreshedGallery,
 } from "./model.js";
 
 const installed = { help: { "main.js": "hash" } };
@@ -281,6 +288,103 @@ test("sizeText writes byte sizes in B and kB", () => {
   assert.equal(sizeText(911), "911 B");
   assert.equal(sizeText(2048), "2.0 kB");
   assert.equal(sizeText(26628), "26.0 kB");
+});
+
+// --- Gallery: one GitHub topic search, paged, cached and refreshed offline-first. ---
+
+const searchPayload = {
+  total_count: 753,
+  incomplete_results: false,
+  items: [
+    {
+      full_name: "BWrong/better-changes",
+      stargazers_count: 812,
+      description: "Review and land changes without leaving the terminal",
+      pushed_at: "2026-11-02T08:31:05Z",
+    },
+    {
+      full_name: "someone/herdr-tabs",
+      stargazers_count: 0,
+      description: null,
+      pushed_at: null,
+    },
+  ],
+};
+
+test("a search response becomes gallery rows with repository, stars, description and last push", () => {
+  const gallery = galleryRowsOf(searchPayload);
+  assert.equal(gallery.totalCount, 753);
+  assert.deepEqual(gallery.rows, [
+    {
+      repository: "BWrong/better-changes",
+      stars: 812,
+      description: "Review and land changes without leaving the terminal",
+      pushedAt: "2026-11-02",
+    },
+    { repository: "someone/herdr-tabs", stars: 0, description: "", pushedAt: "unknown" },
+  ]);
+});
+
+test("gallery rows read a JSON string too, and a body without items yields none", () => {
+  assert.equal(galleryRowsOf(JSON.stringify(searchPayload)).rows.length, 2);
+  assert.deepEqual(galleryRowsOf("not json"), { totalCount: 0, rows: [] });
+  assert.deepEqual(galleryRowsOf({ total_count: 4, items: "nope" }), { totalCount: 4, rows: [] });
+});
+
+test("pushedText keeps the date of a push and says unknown when there is none", () => {
+  assert.equal(pushedText("2026-11-02T08:31:05Z"), "2026-11-02");
+  assert.equal(pushedText(null), "unknown");
+  assert.equal(pushedText("yesterday"), "unknown");
+});
+
+test("the paging plan covers every result, 100 per page, and stops where GitHub stops", () => {
+  assert.deepEqual(galleryPagePlan(0), []);
+  assert.deepEqual(galleryPagePlan(100), [1]);
+  assert.deepEqual(galleryPagePlan(250), [1, 2, 3]);
+  assert.deepEqual(galleryPagePlan(753), [1, 2, 3, 4, 5, 6, 7, 8]);
+  // Search exposes the first 1000 results only; asking beyond it is an error, not a page.
+  assert.deepEqual(galleryPagePlan(5000), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+});
+
+test("the gallery cache keeps its fetch time and rows, and reads back as empty when unusable", () => {
+  const cache = {
+    fetchedAt: "2026-11-16T15:04:00.000Z",
+    rows: [{ repository: "someone/herdr-tabs", stars: 3, description: "Tabs", pushedAt: "2026-10-01" }],
+  };
+  const text = galleryCacheText(cache);
+  assert.deepEqual(galleryCacheOf(text), cache);
+  assert.ok(JSON.parse(text).fetchedAt === "2026-11-16T15:04:00.000Z");
+  assert.deepEqual(galleryCacheOf(null), { fetchedAt: null, rows: [] });
+  assert.deepEqual(galleryCacheOf("{broken"), { fetchedAt: null, rows: [] });
+});
+
+test("errorTextOf shows the responder's own message verbatim, never a guess", () => {
+  const rateLimited = '{"message":"API rate limit exceeded for 203.0.113.7.","documentation_url":"https://docs.github.com/rest"}';
+  assert.equal(errorTextOf(rateLimited, 403), "API rate limit exceeded for 203.0.113.7.");
+  assert.equal(
+    errorTextOf({ message: "Validation Failed" }, 422),
+    "Validation Failed",
+  );
+  assert.equal(errorTextOf("Bad Gateway", 502), "Bad Gateway");
+  assert.equal(errorTextOf("", 500), "HTTP 500");
+  assert.equal(errorTextOf(null, 0), "Request failed");
+});
+
+test("a failed refresh keeps the rows it had and carries the failure's text", () => {
+  const cache = {
+    fetchedAt: "2026-11-16T15:04:00.000Z",
+    rows: [{ repository: "someone/herdr-tabs", stars: 3, description: "Tabs", pushedAt: "2026-10-01" }],
+  };
+  const failed = refreshedGallery(cache, { error: "API rate limit exceeded for 203.0.113.7." });
+  assert.deepEqual(failed.rows, cache.rows);
+  assert.equal(failed.fetchedAt, "2026-11-16T15:04:00.000Z");
+  assert.equal(failed.error, "API rate limit exceeded for 203.0.113.7.");
+
+  const fresh = [{ repository: "BWrong/better-changes", stars: 812, description: "Changes", pushedAt: "2026-11-02" }];
+  const succeeded = refreshedGallery(cache, { rows: fresh, fetchedAt: "2026-11-16T16:20:00.000Z" });
+  assert.deepEqual(succeeded.rows, fresh);
+  assert.equal(succeeded.fetchedAt, "2026-11-16T16:20:00.000Z");
+  assert.equal(succeeded.error, null);
 });
 
 // Settings: the schema's leaves, the drafts, and what a save writes.
