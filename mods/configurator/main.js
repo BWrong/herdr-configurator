@@ -41,6 +41,9 @@ import {
   hashesOf,
   commitOf,
   recordSource,
+  checkTargets,
+  checkStateOf,
+  withCheckResults,
   galleryRowsOf,
   galleryPagePlan,
   galleryCacheOf,
@@ -56,6 +59,9 @@ const GALLERY_TOPIC_URL = "https://api.github.com/search/repositories?q=topic:he
 
 const GEAR = "mods/configurator/icons/gear.svg";
 const ORIGIN_WORDS = { shipped: "shipped", cloned: "cloned", third_party: "third party" };
+// A row's check state as a dot colour and as the word the detail pane says.
+const CHECK_DOTS = { moved: "accent", current: "border", failed: "ansi1" };
+const CHECK_WORDS = { moved: "upstream moved", current: "up to date", failed: "check failed" };
 
 const parseObject = (text) => {
   try {
@@ -88,6 +94,8 @@ export default class Configurator extends View {
     this.galleryRaw = null;
     this.galleryError = null;
     this.refreshing = false;
+    this.checkingUpdates = false;
+    this.checkNote = "";
     this.forms = {};
     this.openSelect = null;
     this.hoveredField = null;
@@ -347,10 +355,10 @@ export default class Configurator extends View {
     return `Couldn't save${failure?.message ? `: ${failure.message}` : "."}`;
   }
 
-  // One ledger row, written conditionally: the file is re-read and the row merged on every
+  // One ledger write, conditionally: the file is re-read and `merge` applied on every
   // attempt, so a ledger the person edited meanwhile keeps their changes. A ledger that
   // reports a problem is left alone rather than replaced.
-  async writeLedger(pending) {
+  async writeLedger(merge) {
     const folder = `${appHome()}/data/configurator`;
     const path = `${folder}/ledger.json`;
     let failure = null;
@@ -358,7 +366,7 @@ export default class Configurator extends View {
       const raw = await readTextFile(path);
       const read = parseLedger(raw);
       if (read.problem) return read.problem;
-      const entries = recordSource(read.entries, pending);
+      const entries = merge(read.entries);
       try {
         if (raw === null) await exec("/bin/sh", ["-c", 'mkdir -p "$1"', "sh", folder]);
         await writeTextFile(path, ledgerJson(entries), raw);
@@ -399,7 +407,9 @@ export default class Configurator extends View {
     }
     const resolved = commitOf(body);
     if (resolved.error) return { note: resolved.error };
-    const failure = await this.writeLedger({ name, repo, ref, commit: resolved.commit, files });
+    const failure = await this.writeLedger((entries) =>
+      recordSource(entries, { name, repo, ref, commit: resolved.commit, files }),
+    );
     if (failure) return { note: failure };
     return { note: `Recorded ${repo} @ ${resolved.commit.slice(0, 7)}.` };
   }
@@ -426,6 +436,69 @@ export default class Configurator extends View {
       if (this.selected === row.name) this.detail = await this.detailFor(row.name);
       cx.notify();
     });
+  }
+
+  // One commit lookup: the resolved sha, or the responder's own error text. Nothing else is
+  // asked of GitHub, and a lookup that fails is a result, not a guess.
+  async lookupCommit(target) {
+    try {
+      const response = await fetch(target.url, { headers: { accept: "application/vnd.github+json" } });
+      const body = await response.text();
+      if (!response.ok) return { name: target.name, error: errorTextOf(body, response.status) };
+      const resolved = commitOf(body);
+      return resolved.error
+        ? { name: target.name, error: resolved.error }
+        : { name: target.name, commit: resolved.commit };
+    } catch (error) {
+      return { name: target.name, error: error?.message ?? String(error) };
+    }
+  }
+
+  // Check updates: one lookup per tracked entry, then one ledger write holding every result —
+  // the commit when it resolved, the responder's text when it did not. No timer, no check on
+  // open, and nothing at all while a check or a write is under way.
+  async checkUpdates(cx) {
+    if (!this.overlay || checking() || this.checkingUpdates) return;
+    if (this.ledgerProblem) {
+      this.checkNote = `Ledger: ${this.ledgerProblem}`;
+      cx.notify();
+      return;
+    }
+    const targets = checkTargets(this.rows, this.ledger);
+    if (!targets.length) {
+      this.checkNote = "No entry has a recorded repository and ref to check.";
+      cx.notify();
+      return;
+    }
+    this.checkingUpdates = true;
+    this.checkNote = `Checking ${targets.length}…`;
+    cx.notify();
+    const results = [];
+    for (const target of targets) {
+      if (checking()) {
+        this.checkingUpdates = false;
+        cx.notify();
+        return;
+      }
+      results.push(await this.lookupCommit(target));
+    }
+    const now = Date.now();
+    const failure = await this.writeLedger((entries) => withCheckResults(entries, results, now));
+    this.checkingUpdates = false;
+    if (failure) {
+      this.checkNote = failure;
+      cx.notify();
+      return;
+    }
+    const moved = results.filter((result) => checkStateOf(this.ledger[result.name]) === "moved").length;
+    const current = results.filter((result) => checkStateOf(this.ledger[result.name]) === "current").length;
+    const failed = results.length - moved - current;
+    const firstError = results.find((result) => result.error);
+    this.checkNote = `Checked ${results.length}${moved ? `, ${moved} upstream moved` : ""}${
+      current ? `, ${current} up to date` : ""
+    }${failed ? `, ${failed} failed: ${firstError?.error ?? "unknown error"}` : ", no failed lookups"}.`;
+    this.detail = await this.detailFor(this.selected);
+    cx.notify();
   }
 
   save(form, cx) {
@@ -732,6 +805,9 @@ export default class Configurator extends View {
         });
       })
       .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(row.title))
+      .when(Boolean(CHECK_DOTS[row.checkState]), (el) =>
+        el.child(div().w(5).h(5).rounded(3).bg(t[CHECK_DOTS[row.checkState]])),
+      )
       .child(div().text_size(11).text_color(t.dim).child(this.originWord(row)))
       .when(Boolean(row.version), (el) =>
         el.child(div().text_size(11).text_color(t.dim).child(row.version)),
@@ -782,8 +858,20 @@ export default class Configurator extends View {
                   .child(detail.provenanceText),
               )
               .when(Boolean(detail.lastChecked), (el) =>
-                el.child(div().text_size(11).text_color(t.dim).child(`checked ${detail.lastChecked}`)),
+                el.child(
+                  div()
+                    .text_size(11)
+                    .text_color(t.dim)
+                    .child(
+                      `checked ${detail.lastChecked}${
+                        CHECK_WORDS[detail.checkState] ? ` · ${CHECK_WORDS[detail.checkState]}` : ""
+                      }`,
+                    ),
+                ),
               ),
+      )
+      .when(Boolean(detail.checkError), (el) =>
+        el.child(div().min_w(0).text_size(11).text_color(t.ansi1).child(detail.checkError)),
       )
       .child(
         h_flex()
@@ -963,27 +1051,10 @@ export default class Configurator extends View {
     return { error: null, ledgerError: await this.removeLedgerRow(plan.name) };
   }
 
-  // Drop one ledger row, conditionally and re-read on every attempt, the way writeLedger
-  // does. A ledger that reports a problem is left alone.
+  // Drop one ledger row through the same conditional writer as any other ledger change,
+  // re-reading the file on every attempt. Only called after the folder actually moved.
   async removeLedgerRow(name) {
-    const folder = `${appHome()}/data/configurator`;
-    const path = `${folder}/ledger.json`;
-    let failure = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const raw = await readTextFile(path);
-      const read = parseLedger(raw);
-      if (read.problem) return read.problem;
-      if (!Object.hasOwn(read.entries, name)) return null;
-      const entries = withoutEntry(read.entries, name);
-      try {
-        await writeTextFile(path, ledgerJson(entries), raw);
-        this.ledger = entries;
-        return null;
-      } catch (error) {
-        failure = error?.message ?? String(error);
-      }
-    }
-    return `Couldn't write the ledger${failure ? `: ${failure}` : "."}`;
+    return this.writeLedger((entries) => withoutEntry(entries, name));
   }
 
   // Unknown origin: the repository and ref to record, and the action that records them.
@@ -1250,6 +1321,48 @@ export default class Configurator extends View {
       );
   }
 
+  // The sticky row under the installed list: the one action that talks to upstream, and
+  // what the last run did, failures included. It never runs on its own.
+  checkRow(t) {
+    return v_flex()
+      .flex_none()
+      .gap(6)
+      .p(10)
+      .border_t(1)
+      .border_color(t.border)
+      .when(Boolean(this.checkNote), (el) =>
+        el.child(div().min_w(0).text_size(11).text_color(t.dim).child(this.checkNote)),
+      )
+      .child(
+        h_flex()
+          .gap(8)
+          .items_center()
+          .child(
+            div()
+              .id("configurator-check-updates")
+              .h(31)
+              .px(12)
+              .flex()
+              .items_center()
+              .rounded(7)
+              .border_1()
+              .border_color(t.border)
+              .bg(t.surface)
+              .cursor_pointer()
+              .hover((s) => s.bg(t.hover))
+              .text_size(12)
+              .text_color(this.checkingUpdates ? t.dim : t.foreground)
+              .on_click((_e, cx) => {
+                if (this.checkingUpdates) return;
+                cx.spawn(async (cx) => {
+                  await this.checkUpdates(cx);
+                });
+              })
+              .child(this.checkingUpdates ? "Checking…" : "Check updates"),
+          ),
+      );
+  }
+
   // The dialog copy: the view switch, then the default installed list or the gallery.
   dialog(t) {
     return h_flex()
@@ -1270,7 +1383,8 @@ export default class Configurator extends View {
           .bg(t.surface)
           .child(this.tabs(t))
           .when(this.tab === "installed", (el) => el.child(this.filterBox(t)))
-          .child(this.tab === "installed" ? this.entriesPane(t) : this.galleryPane(t)),
+          .child(this.tab === "installed" ? this.entriesPane(t) : this.galleryPane(t))
+          .when(this.tab === "installed", (el) => el.child(this.checkRow(t))),
       )
       .child(
         v_flex()

@@ -40,6 +40,7 @@ export function rowsOf(entries, { installed = {}, ledger = {} } = {}) {
         version: typeof manifest?.version === "string" ? manifest.version : null,
         origin,
         unknown: origin === "third_party" && !Object.hasOwn(ledger, name),
+        checkState: origin === "third_party" ? checkStateOf(ledger?.[name]) : null,
       };
     })
     .sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase()) || a.name.localeCompare(b.name));
@@ -248,7 +249,9 @@ export function detailOf(row, { folder = "", manifest = null, ledger = {}, files
     folder,
     repo,
     commit,
-    lastChecked: firstString(recorded.lastChecked),
+    lastChecked: checkedText(recorded.checkedAt),
+    checkState: checkStateOf(recorded),
+    checkError: firstString(recorded.checkedError),
     provenanceText: repo && commit ? `${repo} @ ${commit}` : (repo ?? commit ?? "Unknown origin"),
     files: files ?? [],
     scan,
@@ -426,6 +429,75 @@ export function commitOf(text) {
   if (typeof body.message === "string" && body.message) return { error: body.message };
   if (typeof body.sha === "string" && /^[0-9a-f]{40}$/i.test(body.sha)) return { commit: body.sha.toLowerCase() };
   return { error: "The response had no commit sha." };
+}
+
+const COMMIT_HEX = /^[0-9a-f]{40}$/i;
+
+// The one lookup a check run makes for an entry: GitHub's commit endpoint for its recorded
+// ref. `owner/repo` goes in the path as recorded; a ref with a slash or a space is encoded.
+export function commitUrlOf(repo, ref) {
+  return `https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`;
+}
+
+// The entries a check asks upstream about: every third-party row whose ledger row records
+// both a repository and a ref, one target each. Shipped, cloned, unknown-origin and untracked
+// rows are not targets; neither is a ledger row that cannot name a ref.
+export function checkTargets(rows, ledger) {
+  const targets = [];
+  for (const row of rows ?? []) {
+    if (row?.origin !== "third_party") continue;
+    const recorded = isObject(ledger?.[row.name]) ? ledger[row.name] : null;
+    const repo = firstString(recorded?.repo, recorded?.repository);
+    const ref = firstString(recorded?.ref);
+    if (!repo || !ref) continue;
+    targets.push({ name: row.name, repo, ref, url: commitUrlOf(repo, ref) });
+  }
+  return targets;
+}
+
+// What the ledger's last comparison says about an entry: `moved` when upstream resolved to the
+// same commit, `current` when it resolved to what is installed, `failed` when the lookup
+// brought an error instead, and `unchecked` when nothing was resolved yet. An error always
+// wins: a failed lookup never reads as up to date. A short installed commit compares by prefix.
+export function checkStateOf(recorded) {
+  if (!isObject(recorded)) return "unchecked";
+  if (typeof recorded.checkedError === "string" && recorded.checkedError.trim()) return "failed";
+  const resolved = firstString(recorded.checkedCommit);
+  const installed = firstString(recorded.commit);
+  if (!resolved || !COMMIT_HEX.test(resolved) || !installed) return "unchecked";
+  const current = resolved.toLowerCase();
+  const known = installed.toLowerCase();
+  return current.startsWith(known) ? "current" : "moved";
+}
+
+// When a check ran, in UTC, for the detail pane; nothing when no time was recorded.
+export function checkedText(ms) {
+  const value = typeof ms === "string" && ms.trim() ? Number(ms) : ms;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return null;
+  return `${new Date(time).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+// What one check run writes into the ledger: for each result, `checkedAt` and either the
+// resolved commit (`checkedCommit`) or the responder's own text (`checkedError`). The
+// installed `commit` is never touched, and rows without a result keep their last comparison.
+export function withCheckResults(entries, results = [], now = Date.now()) {
+  const out = { ...(isObject(entries) ? entries : {}) };
+  for (const result of results ?? []) {
+    const name = result?.name;
+    if (typeof name !== "string" || !isObject(out[name])) continue;
+    const row = { ...out[name], checkedAt: now };
+    if (typeof result.commit === "string" && COMMIT_HEX.test(result.commit)) {
+      row.checkedCommit = result.commit.toLowerCase();
+      delete row.checkedError;
+    } else {
+      delete row.checkedCommit;
+      row.checkedError = firstString(result.error) ?? "The check resolved no commit.";
+    }
+    out[name] = row;
+  }
+  return out;
 }
 
 // The entries with `name` recorded as a third-party mod at that repository, ref, commit and
