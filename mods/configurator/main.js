@@ -1117,7 +1117,7 @@ export default class Configurator extends View {
 
   // Bottom right: the selected entry's settings, from its schema, in a scrolling body.
   settingsPane(t) {
-    const base = v_flex().id("configurator-settings").flex_1().min_h(0).bg(t.background);
+    const base = v_flex().id("configurator-settings").flex_1().min_h(0).rounded_br(10).bg(t.background);
     if (!this.loaded) {
       return base.px(14).py(10).child(div().text_size(12).text_color(t.dim).child("Loading…"));
     }
@@ -1913,6 +1913,7 @@ export default class Configurator extends View {
       .items_center()
       .px(14)
       .py(8)
+      .rounded_t(10)
       .border_b(1)
       .border_color(t.border)
       .bg(t.surface)
@@ -2311,6 +2312,7 @@ export default class Configurator extends View {
       .min_h(0)
       .rounded(10)
       .overflow_hidden()
+      .bg(theme().background)
       .track_focus(this.handle)
       .on_key_down((e, cx) => {
         if (e.key === "escape") {
@@ -2345,6 +2347,7 @@ export default class Configurator extends View {
                   .flex_none()
                   .h_full()
                   .min_h(0)
+                  .rounded_bl(10)
                   .bg(t.surface)
                   .child(this.filterBox(t))
                   .child(this.entriesPane(t))
