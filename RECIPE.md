@@ -1,7 +1,7 @@
 # Configurator
 
 One dialog for everything installed under `~/.config/herdr-app/mods/`: what it is, where it
-came from, whether its upstream has moved, and what it is set to. A gear in the window's tab
+came from, whether its upstream has moved, and what it is set to. A blocks icon in the window's tab
 bar, next to Files / Changes, opens it. It replaces `better-config`, whose kept settings
 values are carried over once; the old mod is left in place.
 
@@ -9,14 +9,14 @@ values are carried over once; the old mod is left in place.
 
 ## What you see
 
-**The tab bar button.** The tab bar's gear, in the right-hand group after Files / Changes (and
+**The tab bar button.** The tab bar's blocks icon, in the right-hand group after Files / Changes (and
   after a Git button on layouts that carry a `git-graph` panel):
-a 26 px square, rounded 6 px, the theme's `muted` gear at 14 px, like the panel buttons' icons, hover `hover` and `foreground`
+a 26 px square, rounded 6 px, the theme's `muted` blocks icon at 14 px, like the panel buttons' icons, hover `hover` and `foreground`
 like its neighbours, tooltip "Configurator". It is this mod docked (`place: "none"`): point
-the layout's tabs block at it — `"content": { "mod": "configurator" }` — and the gear appears
+the layout's tabs block at it — `"content": { "mod": "configurator" }` — and the blocks icon appears
 there; nothing else is drawn.
 
-**The dialog** (`mod.open` with `name: "configurator"`, or the gear). 960 × 680;
+**The dialog** (`mod.open` with `name: "configurator"`, or the blocks icon). 960 × 680;
 Herdr draws the frame and the shadow; the mod draws a header row and, under it, two columns.
 
 **Left column**, 320 px, `surface` background, in the Installed view only:
@@ -104,7 +104,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 
 ## How it behaves
 
-- **Tab bar gear** — `run("mod.open", {name: "configurator"})`. Escape, or `closeOverlay`,
+- **Tab bar blocks icon** — `run("mod.open", {name: "configurator"})`. Escape, or `closeOverlay`,
   closes the dialog; `mod.open` again toggles it.
 - **Selecting a row** — the detail is read from disk for that entry and swapped in place;
   settings drafts are mirrored to `shared.json` (`configurator.drafts`) and re-applied when
@@ -191,8 +191,8 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   panel buttons from `shared("workspace.panels")`, `syncPanel` and the `panels` localStorage
   key, window buttons and macOS traffic-light padding. Its additions are two buttons in the
   right-hand group: the Git panel button (drawn only where the layout's `panel-body` stack has a
-  `graph` child, so the gear keeps working as the entry point on a `tabs-graph` layout) and the
-  gear, which runs `mod.open`.
+  `graph` child, so the blocks icon keeps working as the entry point on a `tabs-graph` layout) and the
+  blocks icon, which runs `mod.open`.
 - `main.js` (2356 lines): `class Configurator extends View`. `init` reads `props()`, creates
   the filter and provenance inputs in the overlay copy, and — unless `checking()` — spawns
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,
@@ -211,14 +211,14 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - `herdr` calls: `appHome`, `home`, `exec`, `readTextFile`, `writeTextFile`, `checking`,
   `closeOverlay`, `props`, `shared` / `setShared` (drafts only), `theme`, `layouts()`, `keys()`,
   `notify`; the tab bar adds `spaces()`, `panes()`, `window()`, `layout()`, `settings()`,
-  `openOverlay`, `run` (`mod.open` for the gear, plus the tab, panel and window commands).
+  `openOverlay`, `run` (`mod.open` for the blocks icon, plus the tab, panel and window commands).
 - Network: `fetch` to `api.github.com/search/repositories` (the topic), `api.github.com/
   repos/{repo}/commits/{ref}` (checks, Record provenance), and `raw.githubusercontent.com` (an
   entry's `keys.json`). Unauthenticated: 60 requests/hour, 10 searches/minute.
 - Programs: `git clone`, `git -C <folder> rev-parse HEAD` / `--abbrev-ref HEAD`, `herdr-app
   check <folder>`, `shasum -a 256` (via `find | xargs`), and `/bin/sh` for `ls -lR`, `ls -d
   */`, `mkdir -p`, `mv`, `cp`, `rm -rf`.
-- Icons: one 14 px SVG, `mods/configurator/icons/gear.svg`, drawn with `svg(...)` so it
+- Icons: one 14 px SVG, `mods/configurator/icons/blocks.svg`, drawn with `svg(...)` so it
   follows the text colour.
 - Art: none. The preview is `herdr-app shot`, cropped to the dialog so nothing behind it is
   in the picture.
@@ -232,7 +232,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   network request and write sits behind `if (checking()) return;`. Without it, verifying the
   mod would rewrite the person's ledger and other files.
 - **`place: "none"` draws nothing on install.** A fresh copy appears only where a layout names
-  it: set the tabs block's content to `"content": { "mod": "configurator" }`. To take the gear
+  it: set the tabs block's content to `"content": { "mod": "configurator" }`. To take the blocks icon
   away, point that block back at `tabs`.
 - **The ledger dies only with `data/configurator/`.** Uninstalling the Configurator leaves it
   behind on purpose: it holds provenance for entries that outlive the dialog.
@@ -264,7 +264,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - `herdr-app check mods/configurator` exits 0, also from a fresh clone with no setup.
 - `node --test mods/configurator/*.test.js` passes (126 tests).
 - Copying the folder to `~/.config/herdr-app/mods/configurator` shows nothing until the
-  layout's tabs block names it (`"content": { "mod": "configurator" }`); then its gear sits
+  layout's tabs block names it (`"content": { "mod": "configurator" }`); then its blocks icon sits
   next to Files / Changes, and clicking it, or `herdr-app do mod.open '{"name":
   "configurator"}'`, opens the dialog; and `herdr-app shot` shows both.
 - The dialog lists every folder under `mods/` with `shipped` / `cloned` / `third_party` told

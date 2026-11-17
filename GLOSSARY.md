@@ -33,7 +33,7 @@ bar; an overlay copy draws the dialog. `props()` carries `overlay` only in the o
 _Avoid_: panel, window
 
 **Tab bar button**:
-The gear in the window's tab bar, next to Files / Changes, that opens the dialog. It is what
+The blocks icon in the window's tab bar, next to Files / Changes, that opens the dialog. It is what
 a layout naming the mod as its tabs block draws.
 _Avoid_: strip, toolbar, bar
 

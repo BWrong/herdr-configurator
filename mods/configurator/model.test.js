@@ -740,13 +740,13 @@ test("normaliseRepo rejects anything that is not one owner and one repository", 
 test("hashesOf reads shasum lines into sha256 hashes keyed by the entry's paths", () => {
   const output = [
     `${digest("a")}  ./main.js`,
-    `${digest("b")}  ./icons/gear.svg`,
+    `${digest("b")}  ./icons/blocks.svg`,
     `${digest("c")} *./mod.json`,
     "shasum: ./gone.js: No such file or directory",
     "",
   ].join("\n");
   assert.deepEqual(hashesOf(output), {
-    "icons/gear.svg": `sha256:${digest("b")}`,
+    "icons/blocks.svg": `sha256:${digest("b")}`,
     "main.js": `sha256:${digest("a")}`,
     "mod.json": `sha256:${digest("c")}`,
   });

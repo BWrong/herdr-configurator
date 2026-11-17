@@ -1,4 +1,4 @@
-// Configurator: the tab bar's gear opens one dialog, and that dialog lists every entry under
+// Configurator: the tab bar's blocks icon opens one dialog, and that dialog lists every entry under
 // mods/ with its Origin, or — in its second view — the GitHub topic's installable mods. One
 // folder, two copies: props().overlay is set only in the dialog copy; the docked copy draws
 // the tab bar (tabbar.js).

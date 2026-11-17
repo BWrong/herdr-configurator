@@ -32,5 +32,5 @@ and must not assume the docked copy ran anything.
 ## `tabbar.js` is a port, not a rewrite
 
 It follows `~/.config/herdr-app/mods/tabs/main.js`. Keep the shape of the upstream code so a
-diff stays readable, and keep this mod's additions (the Git panel button, the gear) to a
+diff stays readable, and keep this mod's additions (the Git panel button, the blocks icon) to a
 marked block. `scripts/tabs-diff.sh` measures the drift.

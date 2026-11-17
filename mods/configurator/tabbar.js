@@ -1,4 +1,4 @@
-// The tab bar, a faithful port of the `tabs` mod with one addition: the gear after
+// The tab bar, a faithful port of the `tabs` mod with one addition: the blocks icon after
 // Files/Changes, which opens the Configurator dialog, plus the Git panel button where the
 // layout carries a `git-graph` panel (upstream `tabs-graph` hardcodes it instead).
 // Upstream: ~/.config/herdr-app/mods/tabs/main.js — when Herdr ships a new `tabs`, run
@@ -157,7 +157,7 @@ export default class Tabs extends View {
       .when(enabled.includes("changes"), el => el.child(panelButton("changes", "Changes", "mods/changes/changes.svg")))
       // Only where the layout carries a git-graph panel, as tabs-graph assumes rather than asks.
       .when(body?.children?.some((c) => c.id === "graph"), el => el.child(panelButton("graph", "Git", "mods/git-graph/icons/graph.svg")))
-      .child(button("configurator", svg("mods/configurator/icons/gear.svg").size(14), () => run("mod.open", { name: "configurator" }), t.muted).tooltip("Configurator"))
+      .child(button("configurator", svg("mods/configurator/icons/blocks.svg").size(14), () => run("mod.open", { name: "configurator" }), t.muted).tooltip("Configurator"))
       .when(w?.buttons, el => el.child(button("minimize", w.platform === "windows" ? svg("mods/tabs/win-min.svg").size(16) : "−", () => run("window.minimize")))
         .child(button("maximize", w.platform === "windows" ? svg(`mods/tabs/${w.maximized ? "win-restore" : "win-max"}.svg`).size(16) : "□", () => run("window.maximize")))
         .child(button("close-window", w.platform === "windows" ? svg("mods/tabs/win-close.svg").size(16) : svg("mods/pane/close.svg").size(13), () => run("window.close"))));
