@@ -118,6 +118,7 @@ export default class Workshop extends View {
     this.loaded = false;
     this.tab = "installed";
     this.gallery = { fetchedAt: null, rows: [] };
+    this.galleryProgress = null;
     this.galleryText = "";
     this.galleryRaw = null;
     this.galleryError = null;
@@ -285,7 +286,7 @@ export default class Workshop extends View {
   async fetchGalleryPage(page) {
     try {
       const response = await fetch(`${GALLERY_TOPIC_URL}${page}`, {
-        headers: { accept: "application/vnd.github+json" },
+        headers: { accept: "application/vnd.github+json", "user-agent": "herdr-workshop" },
       });
       const body = await response.text();
       return response.ok ? { ok: true, body } : { ok: false, error: errorTextOf(body, response.status) };
@@ -300,6 +301,7 @@ export default class Workshop extends View {
     if (!this.overlay || checking() || this.refreshing) return;
     this.refreshing = true;
     this.galleryError = null;
+    this.galleryProgress = null;
     cx.notify();
     let attempt = { error: "Request failed" };
     try {
@@ -308,12 +310,15 @@ export default class Workshop extends View {
       else {
         const { totalCount, rows } = galleryRowsOf(first.body);
         const all = rows.slice();
+        const pages = galleryPagePlan(totalCount);
         let failure = null;
-        for (const page of galleryPagePlan(totalCount).filter((number) => number > 1)) {
+        for (const page of pages.filter((number) => number > 1)) {
           if (checking()) {
             failure = "herdr-app check is running.";
             break;
           }
+          this.galleryProgress = { page, pages: pages.length };
+          cx.notify();
           const next = await this.fetchGalleryPage(page);
           if (!next.ok) {
             failure = next.error;
@@ -321,7 +326,11 @@ export default class Workshop extends View {
           }
           all.push(...galleryRowsOf(next.body).rows);
         }
-        attempt = failure ? { error: failure } : { rows: all, fetchedAt: new Date().toISOString() };
+        this.galleryProgress = null;
+        // Nine pages take half a minute; what arrived before a failure is still worth keeping.
+        attempt = failure
+          ? { rows: all, fetchedAt: new Date().toISOString(), error: failure }
+          : { rows: all, fetchedAt: new Date().toISOString() };
       }
     } catch (e) {
       attempt = { error: e?.message ?? String(e) };
@@ -329,7 +338,7 @@ export default class Workshop extends View {
     const next = refreshedGallery(this.gallery, attempt);
     this.gallery = { fetchedAt: next.fetchedAt, rows: next.rows };
     this.galleryError = next.error;
-    if (!next.error && !checking()) {
+    if (next.rows.length && !checking()) {
       const text = galleryCacheText(this.gallery);
       if (text !== this.galleryRaw) {
         try {
@@ -526,7 +535,7 @@ export default class Workshop extends View {
     let body = "";
     try {
       const response = await fetch(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`, {
-        headers: { accept: "application/vnd.github+json" },
+        headers: { accept: "application/vnd.github+json", "user-agent": "herdr-workshop" },
       });
       body = await response.text();
     } catch (error) {
@@ -569,7 +578,7 @@ export default class Workshop extends View {
   // asked of GitHub, and a lookup that fails is a result, not a guess.
   async lookupCommit(target) {
     try {
-      const response = await fetch(target.url, { headers: { accept: "application/vnd.github+json" } });
+      const response = await fetch(target.url, { headers: { accept: "application/vnd.github+json", "user-agent": "herdr-workshop" } });
       const body = await response.text();
       if (!response.ok) return { name: target.name, error: errorTextOf(body, response.status) };
       const resolved = commitOf(body);
@@ -1979,6 +1988,18 @@ export default class Workshop extends View {
       .child(this.tabButton(t, "gallery", "Gallery"));
   }
 
+  // The first look at the Gallery fetches it: an empty screen with a button nobody presses
+  // is not a gallery.
+  showTab(tab, cx) {
+    this.tab = tab;
+    if (tab === "gallery" && !this.gallery.rows.length && !this.refreshing && !this.galleryError) {
+      cx.spawn(async (cx) => {
+        await this.refreshGallery(cx);
+      });
+    }
+    cx.notify();
+  }
+
   tabButton(t, tab, label) {
     const on = this.tab === tab;
     return div()
@@ -1991,10 +2012,7 @@ export default class Workshop extends View {
       .when(!on, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
       .text_size(11.5)
       .text_color(on ? t.foreground : t.muted)
-      .on_click((_e, cx) => {
-        this.tab = tab;
-        cx.notify();
-      })
+      .on_click((_e, cx) => this.showTab(tab, cx))
       .child(label);
   }
 
@@ -2112,6 +2130,7 @@ export default class Workshop extends View {
   galleryPane(t) {
     const rows = galleryFiltered(this.gallery.rows, this.galleryText);
     return v_flex()
+      .w_full()
       .flex_1()
       .h_full()
       .min_h(0)
@@ -2132,12 +2151,15 @@ export default class Workshop extends View {
       .child(
         div()
           .relative()
+          .w_full()
           .flex_1()
           .min_h(0)
           .child(
             v_flex()
               .id("workshop-gallery-list")
-              .size_full()
+              .w_full()
+              .flex_1()
+              .min_h(0)
               .overflow_y_scroll()
               .py(2)
               .when(rows.length === 0, (el) =>
@@ -2149,7 +2171,9 @@ export default class Workshop extends View {
                     .text_color(t.dim)
                     .child(
                       this.refreshing
-                        ? "Refreshing…"
+                        ? this.galleryProgress
+                          ? `Refreshing… page ${this.galleryProgress.page} of ${this.galleryProgress.pages}`
+                          : "Refreshing…"
                         : this.galleryText
                           ? "No repository matches."
                           : "No gallery rows yet. Refresh to fetch them.",
@@ -2166,6 +2190,7 @@ export default class Workshop extends View {
   gallerySeat(t, row) {
     return v_flex()
       .id(`workshop-gallery-${row.repository}`)
+      .flex_none()
       .mx(6)
       .mr(14)
       .mb(2)
@@ -2176,6 +2201,8 @@ export default class Workshop extends View {
       .hover((s) => s.bg(t.hover))
       .child(
         h_flex()
+          .w_full()
+          .min_w(0)
           .gap(10)
           .items_center()
           .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(row.repository))
@@ -2207,6 +2234,8 @@ export default class Workshop extends View {
       )
       .child(
         h_flex()
+          .w_full()
+          .min_w(0)
           .gap(10)
           .items_center()
           .child(

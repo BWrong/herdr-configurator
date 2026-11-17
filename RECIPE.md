@@ -50,7 +50,8 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
   The footer holds the responder's error at 11 px `blocked`, a `Refresh` button 24 px tall,
   and "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet").
   Empty: "No gallery rows yet. Refresh to fetch them.", "No repository matches." while
-  searching, or "Refreshing…".
+  searching, or "Refreshing…", which becomes "Refreshing… page 2 of 9" once the page count is
+  known (nine pages take about half a minute).
 
 **Right column, top — the detail pane**, as tall as its contents up to 300 px, 14 px
 horizontal and 10 px vertical padding, 7 px gap, 1 px bottom border, `background` colour.
@@ -120,12 +121,16 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   row they leave becomes the selection, so the pane never describes a row nobody can see.
 - **Arrow keys** — `up` and `down` move the selection through the filtered rows and wrap, the
   same as clicking a row; Escape or `✕` closes the dialog.
-- **Installed vs Gallery** — Installed needs no network. Opening Gallery reads only the cache
-  at `data/workshop/gallery.json`; nothing is fetched until `Refresh`.
+- **Installed vs Gallery** — Installed needs no network. Opening Gallery shows the cache at
+  `data/workshop/gallery.json`; with no cache it fetches once by itself, because an empty
+  screen with a button nobody presses is not a gallery. `Refresh` re-fetches.
 - **Refresh** — one GitHub topic search (`q=topic:herdr-mod`, `per_page=100`, every page up
-  to GitHub's 1000-result cap) with `accept: application/vnd.github+json`, then one cache
-  write. Success shows the repositories with stars, description and last push; failure keeps
-  the rows already shown and prints the responder's own `message`, or the request's own error.
+  to GitHub's 1000-result cap) with `accept: application/vnd.github+json` and a `user-agent`
+  (GitHub answers 403 without one, which is how the empty Gallery was found), then one cache
+  write. Success shows the repositories with stars, description and last push. A page that
+  fails stops the walk but keeps the pages already read, and prints the responder's own
+  `message`, or the request's own error; a failure with nothing read keeps the rows already
+  shown.
 - **Check updates** — one `GET https://api.github.com/repos/{repo}/commits/{ref}` per
   third-party entry whose ledger row records a repository and a ref; nothing else. The one
   ledger write stores `checkedAt` and either `checkedCommit` or `checkedError`. The note
@@ -194,25 +199,25 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   One folder, two copies: the docked one draws the tab bar (`props().overlay` absent), the
   overlay one draws the dialog (`props().overlay` set). They share no module state; the
   dialog copy does its own reading.
-- `tabbar.js` (160 lines): the tab bar, a faithful port of the `tabs` mod — tab pills, scroll
+- `tabbar.js` (165 lines): the tab bar, a faithful port of the `tabs` mod — tab pills, scroll
   handle, wheel and swipe handling, close button, right-click menu, `+`, Files / Changes
   panel buttons from `shared("workspace.panels")`, `syncPanel` and the `panels` localStorage
   key, window buttons and macOS traffic-light padding. Its additions are two buttons in the
   right-hand group: the Git panel button (drawn only where the layout's `panel-body` stack has a
   `graph` child, so the blocks icon keeps working as the entry point on a `tabs-graph` layout) and the
   blocks icon, which runs `mod.open`.
-- `main.js` (2356 lines): `class Workshop extends View`. `init` reads `props()`, creates
+- `main.js` (2434 lines): `class Workshop extends View`. `init` reads `props()`, creates
   the filter and provenance inputs in the overlay copy, and — unless `checking()` — spawns
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,
   `installed.json`, every `layouts/*.json` and the gallery cache. `render` branches on
   `props().overlay`. Elements come from `gpui-kit` (`View`, `div`, `svg`) and `gpui-base`
   (`v_flex`, `h_flex`, `Scrollbar`, `InputState`, `Input`, `Select`, `Popup`, `Checkbox`).
-- `model.js` (997 lines): the pure half. No Herdr calls, so `node --test` runs it: folder
+- `model.js` (1015 lines): the pure half. No Herdr calls, so `node --test` runs it: folder
   listing → rows, Origin, filter, file sizes, detail and Reference scan text, ledger
   parse/serialize with its version gate, sha256 comparison → update decision, write plan and
   report, key conflict split, gallery response → rows and pages, cache shape, install
   folder-name collision, uninstall and trash paths, settings fields/drafts/validation and
-  kept copy. `node --test mods/workshop/*.test.js` runs 126 tests.
+  kept copy. `node --test mods/workshop/*.test.js` runs 128 tests.
 - `mod.schema.json` describes this mod's own `mod.json` only. It declares no `settings`
   property: the Workshop has none of its own. At runtime it reads each entry's
   `mods/<name>/mod.schema.json` for the settings form.
@@ -270,7 +275,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 ## Done when
 
 - `herdr-app check mods/workshop` exits 0, also from a fresh clone with no setup.
-- `node --test mods/workshop/*.test.js` passes (126 tests).
+- `node --test mods/workshop/*.test.js` passes (128 tests).
 - Copying the folder to `~/.config/herdr-app/mods/workshop` shows nothing until the
   layout's tabs block names it (`"content": { "mod": "workshop" }`); then its blocks icon sits
   next to Files / Changes, and clicking it, or `herdr-app do mod.open '{"name":

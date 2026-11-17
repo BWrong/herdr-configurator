@@ -428,6 +428,18 @@ test("a failed refresh keeps the rows it had and carries the failure's text", ()
   assert.equal(succeeded.error, null);
 });
 
+test("a refresh that fails on page 5 of 9 keeps the pages it read, and says why", () => {
+  const cache = { fetchedAt: "2026-11-16T15:04:00.000Z", rows: [] };
+  const partial = refreshedGallery(cache, {
+    rows: [{ repository: "BWrong/better-tabs", stars: 12, description: "Tabs", pushedAt: "2026-11-01" }],
+    fetchedAt: "2026-11-16T17:20:00.000Z",
+    error: "fetching page 5 failed",
+  });
+  assert.equal(partial.rows.length, 1);
+  assert.equal(partial.fetchedAt, "2026-11-16T17:20:00.000Z");
+  assert.equal(partial.error, "fetching page 5 failed");
+});
+
 // Settings: the schema's leaves, the drafts, and what a save writes.
 
 const settingsSchema = {

@@ -325,8 +325,11 @@ export function errorTextOf(body, status = 0) {
 
 // What a refresh leaves the view with: rows and a fetch time on success, every previous row
 // and the failure's text when it failed. Offline-first means the failure never empties the list.
+// A failure keeps the cache; a failure partway through nine pages keeps the pages it did read,
+// because the topic is one search and half of it is still a useful gallery.
 export function refreshedGallery(cache, { rows, fetchedAt, error } = {}) {
-  if (error) return { fetchedAt: cache?.fetchedAt ?? null, rows: cache?.rows ?? [], error };
+  if (error && !rows?.length) return { fetchedAt: cache?.fetchedAt ?? null, rows: cache?.rows ?? [], error };
+  if (error) return { fetchedAt: fetchedAt ?? cache?.fetchedAt ?? null, rows, error };
   return { fetchedAt: fetchedAt ?? null, rows: rows ?? [], error: null };
 }
 
