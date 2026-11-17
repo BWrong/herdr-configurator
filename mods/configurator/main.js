@@ -127,7 +127,6 @@ export default class Configurator extends View {
     this.checkNote = "";
     this.forms = {};
     this.openSelect = null;
-    this.hoveredField = null;
     this.keyOffers = {};
     this.keyPanel = null;
     this.uninstall = null;
@@ -1085,11 +1084,9 @@ export default class Configurator extends View {
   }
 
   settingRow(t, form, field, separated) {
-    const id = `${form.name}:${field.key}`;
     const draft = form.drafts[field.key];
     const problem = form.problems[field.key] ?? parseDraft(field, draft).error ?? null;
     const changed = changedKeys([field], form.drafts, form.settings).length > 0;
-    const hovered = this.hoveredField === id;
     return h_flex()
       .w_full()
       .px(12)
@@ -1097,12 +1094,6 @@ export default class Configurator extends View {
       .gap(16)
       .items_start()
       .when(separated, (el) => el.border_t(1).border_color(t.border))
-      .on_hover((isHovered, cx) => {
-        const next = isHovered ? id : this.hoveredField === id ? null : this.hoveredField;
-        if (next === this.hoveredField) return;
-        this.hoveredField = next;
-        cx.notify();
-      })
       .child(
         v_flex()
           .flex_1()
@@ -1115,7 +1106,7 @@ export default class Configurator extends View {
               .child(div().text_size(13).text_color(t.foreground).child(field.title))
               .when(changed, (el) => el.child(div().w(5).h(5).rounded(3).bg(t.accent))),
           )
-          .when(hovered && Boolean(field.description), (el) =>
+          .when(Boolean(field.description), (el) =>
             el.child(div().text_size(11).line_height("15px").text_color(t.dim).child(field.description)),
           )
           .when(Boolean(problem), (el) => el.child(div().text_size(11).text_color(t.ansi1).child(problem))),
@@ -1247,7 +1238,6 @@ export default class Configurator extends View {
     this.selected = name;
     this.openSelect = null;
     this.openCategory = false;
-    this.hoveredField = null;
     this.sourceNote = "";
     this.sourceRepo.set_value("");
     this.sourceRef.set_value("");

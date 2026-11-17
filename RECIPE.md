@@ -91,7 +91,8 @@ either side, 10 px apart — a 30 px card header holds the group's name uppercas
 semibold `dim` over a `border` line, and each field is a row 12 px horizontal and 9 px
 vertical padding, 16 px gap, a `border` line above every row but the first. On the left the
 label at 13 px, an `accent` dot when the value differs from the file, the schema's description
-at 11 px `dim` while hovered, and the validation problem at 11 px `ansi1`. On the right a
+at 11 px `dim` under it whenever the schema has one, and the validation problem at 11 px
+`ansi1`. On the right a
 96 px control: a text or number `Input` 26 px tall at 12 px; an enum `Select` trigger 28 px
 tall at 12.5 px opening a 180 px menu; a boolean `Checkbox` 18 × 18 px. With no schema fields
 the header still shows and the body reads "This entry ships no settings." No entry: "Select
