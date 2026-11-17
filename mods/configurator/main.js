@@ -2140,11 +2140,14 @@ export default class Configurator extends View {
   gallerySeat(t, row) {
     return v_flex()
       .id(`configurator-gallery-${row.repository}`)
-      .gap(3)
-      .px(14)
-      .py(8)
-      .border_b(1)
-      .border_color(t.border)
+      .mx(6)
+      .mr(14)
+      .mb(2)
+      .gap(2)
+      .px(10)
+      .py(9)
+      .rounded(6)
+      .hover((s) => s.bg(t.hover))
       .child(
         h_flex()
           .gap(10)
@@ -2189,7 +2192,7 @@ export default class Configurator extends View {
               .text_color(t.muted)
               .child(row.description || "No description."),
           )
-          .child(div().flex_none().text_size(11).text_color(t.dim).child(`Pushed ${row.pushedAt}`)),
+          .child(div().flex_none().text_size(11).text_color(t.dim).child(`Pushed ${row.pushedAt.slice(0, 10)}`)),
       )
       .when(this.installNote?.repository === row.repository, (el) =>
         el.child(

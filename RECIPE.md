@@ -42,10 +42,11 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
 
 - A search box 14 px in, 30 px tall, the shape of the filter, placeholder
   "Search repositories…".
-- One row per repository, 14 px padding horizontally and 8 px vertically, a 1 px `border`
-  line under each row, two lines each: on the first the repository name at 13 px, `★ n` at
-  11 px `dim` and an `Install` button 24 px tall at the right; on the second its description
-  at 11 px `muted` (or "No description.") with "Pushed YYYY-MM-DD" at 11 px `dim` at the right.
+- One row per repository, 6 px in from either edge, 14 px clear on the right, rounded 6 px,
+  10 px inside horizontally and 9 px vertically, 2 px between rows, no separators: two lines
+  each, on the first the repository name at 13 px, `★ n` at 11 px `dim` and an `Install`
+  button 24 px tall at the right; on the second its description at 11 px `muted` (or
+  "No description.") with "Pushed YYYY-MM-DD" — the date only — at 11 px `dim` at the right.
   The footer holds the responder's error at 11 px `blocked`, a `Refresh` button 24 px tall,
   and "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet").
   Empty: "No gallery rows yet. Refresh to fetch them.", "No repository matches." while
