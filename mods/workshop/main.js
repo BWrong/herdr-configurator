@@ -44,6 +44,7 @@ import {
   hashesOf,
   commitOf,
   recordSource,
+  sourceEvidenceOf,
   checkTargets,
   checkStateOf,
   withCheckResults,
@@ -197,8 +198,12 @@ export default class Workshop extends View {
 
   // The detail of one entry: its files as they are on disk right now, plus the Reference scan.
   async detailFor(name) {
-    const row = this.rows.find((r) => r.name === name);
+    let row = this.rows.find((r) => r.name === name);
     if (!row) return null;
+    if (row.unknown) {
+      await this.adoptSource(row);
+      row = this.rows.find((r) => r.name === name) ?? row;
+    }
     const listing = await exec("/bin/sh", ["-c", 'cd "$1" && ls -lR 2>/dev/null', "sh", `${appHome()}/mods/${name}`]);
     const localKeys = await readTextFile(`${appHome()}/mods/${name}/keys.json`);
     const detail = detailOf(row, {
@@ -212,6 +217,30 @@ export default class Workshop extends View {
       detail.origin === "third_party" &&
       ((typeof localKeys === "string" && localKeys.trim() !== "") || Boolean(detail.repo));
     return detail;
+  }
+
+  // A hand-dropped entry that is still a checkout carries its own provenance. Reading git
+  // and writing our own ledger is the one thing that can be done without asking.
+  async adoptSource(row) {
+    if (checking() || this.ledgerProblem) return;
+    const folder = `${appHome()}/mods/${row.name}`;
+    const ask = async (args) => {
+      try {
+        return String((await exec("git", ["-C", folder, ...args])).stdout ?? "").trim();
+      } catch {
+        return "";
+      }
+    };
+    const evidence = sourceEvidenceOf({
+      remote: await ask(["remote", "get-url", "origin"]),
+      commit: await ask(["rev-parse", "HEAD"]),
+      ref: await ask(["rev-parse", "--abbrev-ref", "HEAD"]),
+    });
+    if (!evidence) return;
+    const files = await this.hashFolder(folder);
+    if (!Object.keys(files).length) return;
+    const failure = await this.writeLedger((entries) => recordSource(entries, { name: row.name, ...evidence, files }));
+    if (failure) this.sourceNote = `Ledger: ${failure}`;
   }
 
   galleryPath() {
@@ -231,6 +260,8 @@ export default class Workshop extends View {
     const listing = await exec("/bin/sh", ["-c", 'cd "$1" && find . -type f -print0 | xargs -0 shasum -a 256', "sh", folder]);
     const files = hashesOf(listing.stdout);
     for (const generated of ["gpui-kit.d.ts", "jsconfig.json"]) delete files[generated];
+    // A hand-dropped entry can still be a checkout; its .git never matches upstream.
+    for (const path of Object.keys(files)) if (path.startsWith(".git/")) delete files[path];
     return files;
   }
 

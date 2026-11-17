@@ -31,6 +31,7 @@ import {
   hashesOf,
   commitOf,
   recordSource,
+  sourceEvidenceOf,
   pushedText,
   galleryRowsOf,
   galleryFiltered,
@@ -1649,4 +1650,21 @@ test("the category keeps only the Origin it names", () => {
   assert.deepEqual(filterRows(rows, "", "cloned").map((row) => row.name), ["catppuccin-changes"]);
   assert.deepEqual(filterRows(rows, "changes", "cloned").map((row) => row.name), ["catppuccin-changes"]);
   assert.deepEqual(filterRows(rows, "better", "shipped"), []);
+});
+
+test("a checkout's own remote and commit are provenance, and half of it is not", () => {
+  const commit = "9f2c1b0d4e5a6f708192a3b4c5d6e7f80912a3b4";
+  assert.deepEqual(
+    sourceEvidenceOf({ remote: "git@github.com:BWrong/herdr-workshop.git", commit, ref: "main" }),
+    { repo: "BWrong/herdr-workshop", ref: "main", commit },
+  );
+  assert.deepEqual(
+    sourceEvidenceOf({ remote: "https://github.com/munza/herdr-mods", commit, ref: "HEAD" }),
+    { repo: "munza/herdr-mods", ref: "main", commit },
+  );
+  assert.equal(sourceEvidenceOf({ remote: "https://github.com/munza/herdr-mods" }), null);
+  assert.equal(sourceEvidenceOf({ remote: "", commit }), null);
+  assert.equal(sourceEvidenceOf({ remote: "https://gitlab.com/munza/herdr-mods", commit }), null);
+  assert.equal(sourceEvidenceOf({}), null);
+  assert.equal(sourceEvidenceOf(), null);
 });

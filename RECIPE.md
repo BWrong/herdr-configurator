@@ -71,6 +71,10 @@ Empty: "Select an entry." or "Loading…".
 For an unknown-origin entry the provenance line is replaced by two inputs — repository,
 placeholder "owner/repo or a GitHub URL", and ref, placeholder "main", 84 px wide — and a
 `Record provenance` button. An entry with no files says "No files on disk."
+The inputs appear only when the folder cannot prove itself: a hand-dropped entry that is
+still a git checkout records itself on selection (its own `origin` remote and `HEAD`
+commit, hashed as any other entry), so its provenance line reads `owner/repo @ abc1234`
+without anyone typing.
 
 Along the bottom of the detail pane, one row: on the left, at 11 px `dim` (`blocked` when a
 report failed), one sentence — the last Update report or its error, else why Update is not
@@ -147,7 +151,11 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   "This entry is a copy; it never follows upstream." A shipped entry cannot be uninstalled.
 - **Record provenance** — for an unknown-origin entry: hash every file, resolve the ref's current
   commit with one `GET /repos/{repo}/commits/{ref}`, and write the ledger row. The note names
-  the short commit or the responder's error. The folder itself is not touched.
+  the short commit or the responder's error. The folder itself is not touched. Selecting an entry that is still a
+  checkout skips the inputs and the network altogether: `git -C <folder> remote get-url origin`
+  and `rev-parse HEAD` are read, `--abbrev-ref HEAD` names the ref (`main` when it is detached),
+  and the row is written with that commit. Nothing is recorded from a repository name alone —
+  without the commit, a file-by-file comparison has no base.
 - **Install** — on a gallery row: shallow `git clone --depth 1` of the default branch into
   `/tmp/workshop-install-<time>-<repo>`, then the repository's `mods/` folder named after
   the repository (or its only one) is copied with `cp -R` into `mods/`. A taken name becomes
@@ -238,7 +246,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   behind on purpose: it holds provenance for entries that outlive the dialog.
 - **Unknown origin is normal.** Anything hand-dropped into `mods/` has no provenance: it is
   listed, configurable and uninstallable, but never checked or updated until `Record provenance`
-  links it to a repository.
+  links it to a repository — or until the folder's own git checkout proves it on selection.
 - **Tracking needs both repository and ref.** A ledger row missing either is not a check or
   update target.
 - **Rate limits**: 60 core requests/hour without a token. `Check updates` on 20 tracked

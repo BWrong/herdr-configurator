@@ -743,6 +743,18 @@ export function recordSource(entries, { name, repo, ref = "main", commit, files 
   return { ...(isObject(entries) ? entries : {}), [name]: row };
 }
 
+// Provenance a folder can prove about itself: a checkout's own remote and commit. Only
+// evidence that is complete counts — a repository without the commit it sits at cannot
+// answer which files changed, so it is not recorded on its own.
+export function sourceEvidenceOf({ remote, commit, ref } = {}) {
+  const repo = normaliseRepo(remote);
+  if (!repo) return null;
+  const sha = typeof commit === "string" ? commit.trim() : "";
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return null;
+  const branch = typeof ref === "string" && ref.trim() && ref.trim() !== "HEAD" ? ref.trim() : "main";
+  return { repo, ref: branch, commit: sha };
+}
+
 // Settings: the form a mod.schema.json describes, the person's drafts, and what a save
 // writes. A schema's properties.settings is a tree of objects; its leaves become rows,
 // grouped by the first path segment. Only what differs from the file is written.
