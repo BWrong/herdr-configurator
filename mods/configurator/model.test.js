@@ -321,11 +321,13 @@ test("the detail pane's file chips cap at a limit and count the rest", () => {
   assert.deepEqual(fileChipsOf(null), { shown: [], more: 0 });
 });
 
-test("sizeText writes byte sizes in B and kB", () => {
+test("sizeText writes byte sizes in B, kB and MB", () => {
   assert.equal(sizeText(0), "0 B");
   assert.equal(sizeText(911), "911 B");
   assert.equal(sizeText(2048), "2.0 kB");
   assert.equal(sizeText(26628), "26.0 kB");
+  assert.equal(sizeText(1048576), "1.0 MB");
+  assert.equal(sizeText(1778493), "1.7 MB");
 });
 
 // --- Gallery: one GitHub topic search, paged, cached and refreshed offline-first. ---

@@ -231,7 +231,9 @@ const firstString = (...values) => values.find((value) => typeof value === "stri
 // "B" under a kilobyte, one decimal above it.
 export function sizeText(bytes) {
   const value = Number(bytes) || 0;
-  return value < 1024 ? `${value} B` : `${(value / 1024).toFixed(1)} kB`;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} kB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // --- Gallery: the GitHub topic's repositories, paged, cached, refreshed. ---

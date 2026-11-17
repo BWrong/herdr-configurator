@@ -61,9 +61,10 @@ at 11 px `muted`, pushed right; then the folder as `mods/<name>` in JetBrains Mo
 "This entry is a copy; it never follows upstream."; only an unknown origin reads "Unknown
 origin"), and for a checked entry `checked 2026-11-16 08:00 UTC · upstream moved` (or
 `up to date` / `check failed`) at 11 px `dim`, then a failed lookup's error text at 11 px
-`ansi1`. Under a label `FILES`: the first five files as chips, each with its name in JetBrains
-Mono at 11 px and its size at 10.5 px (`B`, or one decimal and `kB`), and past five a
-`+n more` chip.
+`ansi1`. Under a label `FILES`: one line, the first five files' names in JetBrains Mono at
+11 px `muted` (`+n more` past five), and at the right the count and the total size at 11 px
+`dim` ("38 files · 1.7 MB", one file reading "1 file"; `B`, one decimal and `kB`, one decimal
+and `MB`).
 Empty: "Select an entry." or "Loading…".
 
 
@@ -81,17 +82,20 @@ entry and no key bindings."); on the right, in order, `Key bindings` (third part
 6 px, 11.5 px text, `background` with a `border` line. A button with nothing behind it stays
 in place, `dim`, unclickable, and the sentence says why.
 
-**Right column, bottom — settings**, `background` colour. A 36 px header with 14 px padding:
-"SETTINGS" at 11 px semibold `dim`, an optional note at 11 px `dim`, and `Save` at 12 px
-(accent border and `selected` background when there are changed keys). Below it a scrolling
-body: one group per first path segment of the schema, its name uppercased at 11 px semibold
-`dim`; one row per field, 14 px horizontal and 7 px vertical padding, 16 px gap, separated by
-1 px `border` lines. On the left the label at 13 px, an `accent` dot when the value differs
-from the file, the schema's description at 11 px `dim` while hovered, and the validation
-problem at 11 px `ansi1`. On the right a 96 px control: a text or number `Input` 26 px tall at
-12 px; an enum `Select` trigger 28 px tall at 12.5 px opening a 180 px menu; a boolean
-`Checkbox` 18 × 18 px. With no schema fields the header still shows and the body reads
-"This entry ships no settings." No entry: "Select an entry." Loading: "Loading…".
+**Right column, bottom — settings**, `background` colour. A 36 px header on `surface`, 14 px
+padding, a `border` line under it: "SETTINGS" at 10.5 px semibold `muted`, an optional note at
+11 px `dim`, and a 24 px `Save` button (accent border, `selected` fill when there are changed
+keys; `dim` and unclickable when there are none). Below it a scrolling body of cards, one per
+first path segment of the schema: 8 px rounded, 1 px `border`, `raised` fill, 14 px in from
+either side, 10 px apart — a 30 px card header holds the group's name uppercased at 10.5 px
+semibold `dim` over a `border` line, and each field is a row 12 px horizontal and 9 px
+vertical padding, 16 px gap, a `border` line above every row but the first. On the left the
+label at 13 px, an `accent` dot when the value differs from the file, the schema's description
+at 11 px `dim` while hovered, and the validation problem at 11 px `ansi1`. On the right a
+96 px control: a text or number `Input` 26 px tall at 12 px; an enum `Select` trigger 28 px
+tall at 12.5 px opening a 180 px menu; a boolean `Checkbox` 18 × 18 px. With no schema fields
+the header still shows and the body reads "This entry ships no settings." No entry: "Select
+an entry." Loading: "Loading…".
 
 Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`, `accent`,
 `selected`, `hover`, `muted`, `dim`, `foreground`, `ansi1`, `popover`, `solid`,

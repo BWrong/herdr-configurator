@@ -1084,7 +1084,7 @@ export default class Configurator extends View {
       );
   }
 
-  settingRow(t, form, field) {
+  settingRow(t, form, field, separated) {
     const id = `${form.name}:${field.key}`;
     const draft = form.drafts[field.key];
     const problem = form.problems[field.key] ?? parseDraft(field, draft).error ?? null;
@@ -1092,12 +1092,11 @@ export default class Configurator extends View {
     const hovered = this.hoveredField === id;
     return h_flex()
       .w_full()
-      .px(14)
-      .py(7)
+      .px(12)
+      .py(9)
       .gap(16)
       .items_start()
-      .border_b(1)
-      .border_color(t.border)
+      .when(separated, (el) => el.border_t(1).border_color(t.border))
       .on_hover((isHovered, cx) => {
         const next = isHovered ? id : this.hoveredField === id ? null : this.hoveredField;
         if (next === this.hoveredField) return;
@@ -1143,9 +1142,10 @@ export default class Configurator extends View {
             .px(14)
             .gap(10)
             .items_center()
+            .bg(t.surface)
             .border_b(1)
             .border_color(t.border)
-            .child(div().text_size(11).font_semibold().text_color(t.dim).child("SETTINGS")),
+            .child(div().text_size(10.5).font_semibold().text_color(t.muted).child("SETTINGS")),
         )
         .child(
           div().px(14).py(10).text_size(12).text_color(t.dim).child("This entry ships no settings."),
@@ -1160,29 +1160,20 @@ export default class Configurator extends View {
           .px(14)
           .gap(10)
           .items_center()
+          .bg(t.surface)
           .border_b(1)
           .border_color(t.border)
-          .child(div().text_size(11).font_semibold().text_color(t.dim).child("SETTINGS"))
+          .child(div().text_size(10.5).font_semibold().text_color(t.muted).child("SETTINGS"))
           .child(div().flex_1())
           .when(Boolean(form.note), (el) =>
             el.child(div().text_size(11).text_color(t.dim).child(form.note)),
           )
           .child(
-            div()
-              .id(`configurator-save-${form.name}`)
-              .flex_none()
-              .px(10)
-              .py(3)
-              .rounded(6)
-              .border_1()
-              .border_color(changed.length ? t.accent : t.border)
-              .bg(changed.length ? t.selected : t.background)
-              .text_size(12)
-              .text_color(changed.length ? t.foreground : t.dim)
-              .cursor_pointer()
-              .hover((s) => s.bg(t.hover))
-              .on_click((_e, cx) => this.save(form, cx))
-              .child("Save"),
+            this.button(t, `configurator-save-${form.name}`, "Save", {
+              solid: changed.length > 0,
+              disarmed: changed.length === 0,
+              on_click: (_e, cx) => this.save(form, cx),
+            }),
           ),
       )
       .child(
@@ -1191,22 +1182,34 @@ export default class Configurator extends View {
           .flex_1()
           .min_h(0)
           .child(
-            v_flex().id("configurator-settings-body").size_full().overflow_y_scroll().py(2).pr(12).children(
+            v_flex().id("configurator-settings-body").size_full().overflow_y_scroll().py(4).pr(20).children(
               form.groups.map((group) =>
                 v_flex()
+                  .mx(14)
+                  .mb(10)
+                  .rounded(8)
+                  .border_1()
+                  .border_color(t.border)
+                  .bg(t.raised)
+                  .overflow_hidden()
                   .when(Boolean(group.name), (el) =>
                     el.child(
-                      div()
-                        .px(14)
-                        .pt(10)
-                        .pb(2)
-                        .text_size(11)
-                        .font_semibold()
-                        .text_color(t.dim)
-                        .child(group.name.replaceAll("_", " ").toUpperCase()),
+                      h_flex()
+                        .h(30)
+                        .px(12)
+                        .items_center()
+                        .border_b(1)
+                        .border_color(t.border)
+                        .child(
+                          div()
+                            .text_size(10.5)
+                            .font_semibold()
+                            .text_color(t.dim)
+                            .child(group.name.replaceAll("_", " ").toUpperCase()),
+                        ),
                     ),
                   )
-                  .children(group.fields.map((field) => this.settingRow(t, form, field))),
+                  .children(group.fields.map((field, index) => this.settingRow(t, form, field, index > 0))),
               ),
             ),
           )
@@ -1379,36 +1382,35 @@ export default class Configurator extends View {
       .child(this.sectionLabel(t, "FILES"))
       .child(
         h_flex()
-          .flex_wrap()
-          .gap(6)
-          .when(detail.files.length === 0, (el) =>
-            el.child(div().text_size(11).text_color(t.dim).child("No files on disk.")),
+          .gap(10)
+          .items_center()
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .truncate()
+              .font_family("JetBrains Mono")
+              .text_size(11)
+              .text_color(detail.files.length ? t.muted : t.dim)
+              .child(
+                detail.files.length
+                  ? `${chips.shown.map((file) => file.name).join(", ")}${
+                      chips.more > 0 ? ` +${chips.more} more` : ""
+                    }`
+                  : "No files on disk.",
+              ),
           )
-          .children(
-            chips.shown.map((file) =>
-              h_flex()
-                .gap(4)
-                .items_center()
-                .px(5)
-                .py(2)
-                .rounded(4)
-                .border_1()
-                .border_color(t.border)
-                .child(div().font_family("JetBrains Mono").text_size(11).text_color(t.foreground).child(file.name))
-                .child(div().text_size(10.5).text_color(t.dim).child(sizeText(file.size))),
-            ),
-          )
-          .when(chips.more > 0, (el) =>
+          .when(detail.files.length > 0, (el) =>
             el.child(
               div()
-                .px(5)
-                .py(2)
-                .rounded(4)
-                .border_1()
-                .border_color(t.border)
-                .text_size(10.5)
+                .flex_none()
+                .text_size(11)
                 .text_color(t.dim)
-                .child(`+${chips.more} more`),
+                .child(
+                  `${detail.files.length} ${detail.files.length === 1 ? "file" : "files"} · ${sizeText(
+                    detail.files.reduce((sum, file) => sum + file.size, 0),
+                  )}`,
+                ),
             ),
           ),
       )
@@ -1424,7 +1426,7 @@ export default class Configurator extends View {
 
   // A small uppercase group label, the same shape the app's own settings panes use.
   sectionLabel(t, text) {
-    return div().flex_none().pt(2).text_size(10.5).font_semibold().text_color(t.dim).child(text);
+    return div().flex_none().pt(2).text_size(10.5).font_semibold().text_color(t.muted).child(text);
   }
 
   // The one row of actions for the selected entry, its reason on the left.
