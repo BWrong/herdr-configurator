@@ -1088,6 +1088,7 @@ export default class Configurator extends View {
     const problem = form.problems[field.key] ?? parseDraft(field, draft).error ?? null;
     const changed = changedKeys([field], form.drafts, form.settings).length > 0;
     return h_flex()
+      .flex_none()
       .w_full()
       .px(12)
       .py(9)
@@ -1176,6 +1177,7 @@ export default class Configurator extends View {
             v_flex().id("configurator-settings-body").size_full().overflow_y_scroll().py(4).pr(20).children(
               form.groups.map((group) =>
                 v_flex()
+                  .flex_none()
                   .mx(14)
                   .mb(10)
                   .rounded(8)
