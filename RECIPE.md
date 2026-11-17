@@ -25,14 +25,15 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
   `border` line, placeholder "Filter entries…", 12.5 px text; beside it, 96 px of the same
   shape, the category: `All`, `shipped`, `cloned` or `third_party` at 11.5 px with a `▾`, and
   a 130 px `popover` menu of those four, anchored under it.
-- Under it the list, one row per entry, 40 px tall, 10 px left padding, 24 px right padding
-  clear of the scrollbar, a 1 px `border` line under each row: the first line is the title at
-  13 px, with a 5 × 5 px dot at its right only when the entry has a check state (`accent` for
-  upstream moved, `border` for up to date, `ansi1` for check failed); the second line is the
-  Origin word at 11 px `dim` (`shipped`, `cloned` or `third_party`; the pane says when no
-  repository is recorded, the row does not).
-  The selected row is `selected`, hover is `hover`, and a `Scrollbar` runs always. Empty:
-  "No entries match." or "Loading…".
+- Under it the list, one row per entry, 44 px tall, 6 px clear of either edge and 14 px
+  clear on the right, rounded 6 px, 2 px between rows, and no separators or borders: the
+  first line is the title at 13 px, with a 5 × 5 px dot at its right only when the entry has
+  a check state (`accent` for upstream moved, `border` for up to date, `ansi1` for check
+  failed); 1 px below it the Origin word at 11 px `muted` (`shipped`, `cloned` or
+  `third_party`; the pane says when no repository is recorded, the row does not).
+  The selected row is `selected`, its title semibold, and a 2 × 22 px `accent` bar marks its
+  left edge; hover is `hover`; a `Scrollbar` runs always. Empty: "No entries match." or
+  "Loading…".
 - Under the list, a sticky row with 10 px padding and a 1 px top border: a note at 11 px
   `dim`, and one `Check updates` button 24 px tall, rounded 6 px, 11.5 px, `background`
   colour, `border` line. While it runs it reads "Checking…".

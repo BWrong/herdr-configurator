@@ -1259,34 +1259,50 @@ export default class Configurator extends View {
 
   seat(t, row) {
     const on = row.name === this.selected;
-    return v_flex()
+    return h_flex()
       .id(`configurator-${row.name}`)
-      .h(40)
-      .pl(10)
-      .pr(24)
-      .py(4)
-      .gap(2)
-      .justify_center()
-      .border_b(1)
-      .border_color(t.border)
+      .mx(6)
+      .mr(14)
+      .mb(2)
+      .h(44)
+      .rounded(6)
       .cursor_pointer()
       .when(on, (el) => el.bg(t.selected))
       .hover((s) => s.bg(t.hover))
       .on_click((_e, cx) => this.selectRow(row.name, cx))
+      .child(div().w(2).h(22).flex_none().rounded(1).when(on, (el) => el.bg(t.accent)))
       .child(
-        h_flex()
-          .gap(6)
-          .items_center()
-          .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(row.title))
-          .when(Boolean(CHECK_DOTS[row.checkState]), (el) =>
-            el.child(div().w(5).h(5).rounded(3).bg(t[CHECK_DOTS[row.checkState]])),
+        v_flex()
+          .flex_1()
+          .min_w(0)
+          .py(5)
+          .pl(8)
+          .pr(10)
+          .gap(1)
+          .child(
+            h_flex()
+              .gap(6)
+              .items_center()
+              .child(
+                div()
+                  .flex_1()
+                  .min_w(0)
+                  .truncate()
+                  .text_size(13)
+                  .text_color(t.foreground)
+                  .when(on, (el) => el.font_semibold())
+                  .child(row.title),
+              )
+              .when(Boolean(CHECK_DOTS[row.checkState]), (el) =>
+                el.child(div().w(5).h(5).rounded(3).bg(t[CHECK_DOTS[row.checkState]])),
+              ),
+          )
+          .child(
+            h_flex()
+              .gap(6)
+              .items_center()
+              .child(div().min_w(0).truncate().text_size(11).text_color(t.muted).child(this.originWord(row))),
           ),
-      )
-      .child(
-        h_flex()
-          .gap(6)
-          .items_center()
-          .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(this.originWord(row))),
       );
   }
 
