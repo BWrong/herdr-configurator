@@ -85,7 +85,7 @@ const ORIGIN_WORDS = { shipped: "shipped", cloned: "cloned", third_party: "third
 const CHECK_DOTS = { moved: "accent", current: "border", failed: "ansi1" };
 const CHECK_WORDS = { moved: "upstream moved", current: "up to date", failed: "check failed" };
 // Every gallery row is one fixed height, which is what a virtual list needs (`v_virtual_list`).
-const GALLERY_ROW_HEIGHT = 60;
+const GALLERY_ROW_HEIGHT = 72;
 
 const parseObject = (text) => {
   try {
@@ -2213,8 +2213,8 @@ export default class Workshop extends View {
       .flex_none()
       .pl(10)
       .pr(14)
-      .pt(7)
-      .pb(13)
+      .pt(8)
+      .pb(8)
       .gap(2)
       .rounded(6)
       .when(on, (el) => el.bg(t.selected))
@@ -2234,7 +2234,13 @@ export default class Workshop extends View {
               .when(on, (el) => el.font_semibold())
               .child(name || row.repository),
           )
-          .child(div().flex_none().text_size(11).text_color(t.dim).child(`\u2605 ${row.stars}`)),
+          .child(
+            div()
+              .flex_none()
+              .text_size(11)
+              .text_color(t.dim)
+              .child(`\u2605 ${row.stars}`),
+          ),
       )
       .child(
         h_flex()
@@ -2242,8 +2248,22 @@ export default class Workshop extends View {
           .min_w(0)
           .gap(10)
           .items_center()
-          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(owner || row.repository))
-          .child(div().flex_none().text_size(11).text_color(t.dim).child(`Pushed ${row.pushedAt.slice(0, 10)}`)),
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .truncate()
+              .text_size(11)
+              .text_color(t.dim)
+              .child(owner || row.repository),
+          )
+          .child(
+            div()
+              .flex_none()
+              .text_size(11)
+              .text_color(t.dim)
+              .child(`Pushed ${row.pushedAt.slice(0, 10)}`),
+          ),
       )
       .child(
         h_flex()
