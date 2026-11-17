@@ -29,7 +29,7 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
   clear on the right, rounded 6 px, 2 px between rows, and no separators or borders: the
   first line is the title at 13 px, with a 5 × 5 px dot at its right only when the entry has
   a check state (`accent` for upstream moved, `border` for up to date, `ansi1` for check
-  failed); 1 px below it the Origin word at 11 px `muted` (`shipped`, `cloned` or
+  failed); 1 px below it the Origin word at 11 px `dim` (`shipped`, `cloned` or
   `third_party`; the pane says when no repository is recorded, the row does not).
   The selected row is `selected`, its title semibold, and a 2 × 22 px `accent` bar marks its
   left edge; hover is `hover`; a `Scrollbar` runs always. Empty: "No entries match." or

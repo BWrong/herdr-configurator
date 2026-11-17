@@ -1301,7 +1301,7 @@ export default class Configurator extends View {
             h_flex()
               .gap(6)
               .items_center()
-              .child(div().min_w(0).truncate().text_size(11).text_color(t.muted).child(this.originWord(row))),
+              .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(this.originWord(row))),
           ),
       );
   }
