@@ -703,6 +703,11 @@ export default class Workshop extends View {
 
   // The gallery row's Install action. One at a time, never during a check run, and the row
   // keeps the outcome — success says what landed where, failure the program's own error.
+  async openRepository(repo) {
+    if (checking() || typeof repo !== "string" || !repo.includes("/")) return;
+    await exec("open", [`https://github.com/${repo}`]);
+  }
+
   async install(row, cx) {
     if (checking() || this.installing) return;
     const repo = row?.repository;
@@ -2279,6 +2284,15 @@ export default class Workshop extends View {
               on_click: (_e, cx) =>
                 cx.spawn(async (cx) => {
                   await this.refreshGallery(cx);
+                }),
+            }),
+          )
+          .child(
+            this.button(t, "workshop-gallery-repository", "Repository", {
+              disarmed: !selected,
+              on_click: (_e, cx) =>
+                cx.spawn(async () => {
+                  await this.openRepository(selected.repository);
                 }),
             }),
           )

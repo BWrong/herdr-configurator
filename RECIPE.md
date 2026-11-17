@@ -49,9 +49,10 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
   Clicking a row selects it (`selected` colour); rows themselves carry no button, because a
   virtual list refuses handlers inside its renderer.
   The footer holds the responder's error at 11 px `blocked`, the last install report (with any
-  key bindings the repository offers), `Refresh` and `Install` buttons 24 px tall, and
-  "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet"). `Install` is dim until a
-  row is selected and installs the selected repository; while it runs it reads "Installing…".
+  key bindings the repository offers), `Refresh`, `Repository` and `Install` buttons 24 px
+  tall, and "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet"). `Repository` and
+  `Install` are dim until a row is selected: the first opens that repository's GitHub page in
+  the browser, the second installs it and reads "Installing…" while it runs.
   Empty: "No gallery rows yet. Refresh to fetch them.", "No repository matches." while
   searching, or "Refreshing…", which becomes "Refreshing… page 2 of 9" once the page count is
   known (nine pages take about half a minute).
