@@ -2309,6 +2309,8 @@ export default class Configurator extends View {
       .id("configurator-dialog")
       .size_full()
       .min_h(0)
+      .rounded(10)
+      .overflow_hidden()
       .track_focus(this.handle)
       .on_key_down((e, cx) => {
         if (e.key === "escape") {
