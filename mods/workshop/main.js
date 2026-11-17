@@ -85,7 +85,7 @@ const ORIGIN_WORDS = { shipped: "shipped", cloned: "cloned", third_party: "third
 const CHECK_DOTS = { moved: "accent", current: "border", failed: "ansi1" };
 const CHECK_WORDS = { moved: "upstream moved", current: "up to date", failed: "check failed" };
 // Every gallery row is one fixed height, which is what a virtual list needs (`v_virtual_list`).
-const GALLERY_ROW_HEIGHT = 52;
+const GALLERY_ROW_HEIGHT = 60;
 
 const parseObject = (text) => {
   try {
@@ -2207,24 +2207,17 @@ export default class Workshop extends View {
   // own `on_item_click` names the repository, and the footer installs the one it named.
   galleryRow(t, row) {
     const on = row.repository === this.gallerySelected;
+    const [owner, name] = row.repository.split("/");
     return v_flex()
       .h(GALLERY_ROW_HEIGHT)
       .flex_none()
       .pl(10)
       .pr(14)
-      .py(8)
+      .pt(7)
+      .pb(13)
       .gap(2)
       .rounded(6)
       .when(on, (el) => el.bg(t.selected))
-      .child(
-        h_flex()
-          .w_full()
-          .min_w(0)
-          .gap(10)
-          .items_center()
-          .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(row.repository))
-          .child(div().flex_none().text_size(11).text_color(t.dim).child(`\u2605 ${row.stars}`)),
-      )
       .child(
         h_flex()
           .w_full()
@@ -2236,11 +2229,35 @@ export default class Workshop extends View {
               .flex_1()
               .min_w(0)
               .truncate()
+              .text_size(13)
+              .text_color(t.foreground)
+              .when(on, (el) => el.font_semibold())
+              .child(name || row.repository),
+          )
+          .child(div().flex_none().text_size(11).text_color(t.dim).child(`\u2605 ${row.stars}`)),
+      )
+      .child(
+        h_flex()
+          .w_full()
+          .min_w(0)
+          .gap(10)
+          .items_center()
+          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(owner || row.repository))
+          .child(div().flex_none().text_size(11).text_color(t.dim).child(`Pushed ${row.pushedAt.slice(0, 10)}`)),
+      )
+      .child(
+        h_flex()
+          .w_full()
+          .min_w(0)
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .truncate()
               .text_size(11)
               .text_color(t.muted)
               .child(row.description || "No description."),
-          )
-          .child(div().flex_none().text_size(11).text_color(t.dim).child(`Pushed ${row.pushedAt.slice(0, 10)}`)),
+          ),
       );
   }
 

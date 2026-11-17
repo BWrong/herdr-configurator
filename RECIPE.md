@@ -42,10 +42,11 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
 
 - A search box 14 px in, 30 px tall, the shape of the filter, placeholder
   "Search repositories…".
-- One row per repository, 52 px tall, 10 px in from either edge, 14 px clear on the right,
-  rounded 6 px, no separators: two lines each, on the first the repository name at 13 px
-  and `★ n` at 11 px `dim` at the right; on the second its description at 11 px `muted` (or
-  "No description.") with "Pushed YYYY-MM-DD" — the date only — at 11 px `dim` at the right.
+- One row per repository, 60 px tall, 10 px in from either edge, 14 px clear on the right,
+  rounded 6 px, no separators: three lines each, as the gallery page sorts them — the
+  repository name at 13 px (semibold when selected) with `★ n` at 11 px `dim` at the right;
+  the owner's login at 11 px `dim` with "Pushed YYYY-MM-DD" — the date only — at 11 px `dim`
+  at the right; then the description at 11 px `muted` (or "No description.").
   Clicking a row selects it (`selected` colour); rows themselves carry no button, because a
   virtual list refuses handlers inside its renderer.
   The footer holds the responder's error at 11 px `blocked`, the last install report (with any
@@ -266,7 +267,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **Sizes**: 960 × 680 is the dialog's size, not a minimum; a narrow window clips the left
   column first. The installed list has no row cap. The Gallery is a virtual list
   (`v_virtual_list`, one 52 px row height): 807 repositories cost what the twelve on screen
-  cost, and its bar is a paired `Scrollbar.vertical(…).viewport_from_layout()`. The detail
+  cost (one row is 60 px), and its bar is a paired `Scrollbar.vertical(…).viewport_from_layout()`. The detail
   pane grows with its contents up to 300 px, so wrapped file chips cannot clip the action row.
 - **`Key bindings` appears only when it has something to read**: a third-party entry with a
   local `keys.json` or a recorded repository. Shipped and cloned entries show no trigger.
