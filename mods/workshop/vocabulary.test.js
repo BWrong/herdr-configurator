@@ -1,5 +1,5 @@
 // The glossary's words, checked where a person reads them: the strings a Herdr mod can draw.
-// Run with `node --test mods/configurator/*.test.js`; no Herdr, no dependencies.
+// Run with `node --test mods/workshop/*.test.js`; no Herdr, no dependencies.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

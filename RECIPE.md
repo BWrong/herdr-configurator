@@ -1,22 +1,22 @@
-# Configurator
+# Workshop
 
 One dialog for everything installed under `~/.config/herdr-app/mods/`: what it is, where it
 came from, whether its upstream has moved, and what it is set to. A blocks icon in the window's tab
 bar, next to Files / Changes, opens it. It replaces `better-config`, whose kept settings
 values are carried over once; the old mod is left in place.
 
-![Configurator](preview.png)
+![Workshop](preview.png)
 
 ## What you see
 
 **The tab bar button.** The tab bar's blocks icon, in the right-hand group after Files / Changes (and
   after a Git button on layouts that carry a `git-graph` panel):
 a 26 px square, rounded 6 px, the theme's `muted` blocks icon at 14 px, like the panel buttons' icons, hover `hover` and `foreground`
-like its neighbours, tooltip "Configurator". It is this mod docked (`place: "none"`): point
-the layout's tabs block at it — `"content": { "mod": "configurator" }` — and the blocks icon appears
+like its neighbours, tooltip "Workshop". It is this mod docked (`place: "none"`): point
+the layout's tabs block at it — `"content": { "mod": "workshop" }` — and the blocks icon appears
 there; nothing else is drawn.
 
-**The dialog** (`mod.open` with `name: "configurator"`, or the blocks icon). 960 × 680;
+**The dialog** (`mod.open` with `name: "workshop"`, or the blocks icon). 960 × 680;
 Herdr draws the frame and the shadow; the mod draws a header row and, under it, two columns.
 
 **Left column**, 320 px, `surface` background, in the Installed view only:
@@ -104,10 +104,10 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 
 ## How it behaves
 
-- **Tab bar blocks icon** — `run("mod.open", {name: "configurator"})`. Escape, or `closeOverlay`,
+- **Tab bar blocks icon** — `run("mod.open", {name: "workshop"})`. Escape, or `closeOverlay`,
   closes the dialog; `mod.open` again toggles it.
 - **Selecting a row** — the detail is read from disk for that entry and swapped in place;
-  settings drafts are mirrored to `shared.json` (`configurator.drafts`) and re-applied when
+  settings drafts are mirrored to `shared.json` (`workshop.drafts`) and re-applied when
   the form is built again, so closing and reopening the dialog keeps them.
 - **Filter** — matches a row's title or folder name, ignoring case and padding; the category
   keeps only the Origin it names, and the two narrow together. The Gallery's search matches a
@@ -117,7 +117,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **Arrow keys** — `up` and `down` move the selection through the filtered rows and wrap, the
   same as clicking a row; Escape or `✕` closes the dialog.
 - **Installed vs Gallery** — Installed needs no network. Opening Gallery reads only the cache
-  at `data/configurator/gallery.json`; nothing is fetched until `Refresh`.
+  at `data/workshop/gallery.json`; nothing is fetched until `Refresh`.
 - **Refresh** — one GitHub topic search (`q=topic:herdr-mod`, `per_page=100`, every page up
   to GitHub's 1000-result cap) with `accept: application/vnd.github+json`, then one cache
   write. Success shows the repositories with stars, description and last push; failure keeps
@@ -130,11 +130,11 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **Update** — only for an entry whose ledger row has repository, ref and hashes; every other
   Origin says why it has no update. A shallow
   `git clone --depth 1 --branch <ref>` into
-  `data/configurator/temp/update-<name>-<UTC time>/`, compare the recorded, local and upstream
+  `data/workshop/temp/update-<name>-<UTC time>/`, compare the recorded, local and upstream
   hashes. If any local file differs from the ledger, a panel lists the edited files and asks:
   `Cancel`, or `Move to Trash and overwrite`. Then upstream's files are copied in (creating any
   directory they need), the files upstream no longer ships and the edited files being
-  overwritten are moved to `data/configurator/trash/<UTC time>/<name>/` first, the ledger row
+  overwritten are moved to `data/workshop/trash/<UTC time>/<name>/` first, the ledger row
   takes the new commit and hashes, and `herdr-app check <folder>` runs. The clone is removed
   when all of that succeeded. The report says how many files were added, replaced, restored
   and removed to the trash; a failure during the copies says how many paths had already
@@ -142,14 +142,14 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   `data/<name>/` state directory is never read or written.
 - **Uninstall** — a panel first gives the Reference scan: every `layouts/*.json` naming the
   mod, and every `keys.json` section `mod:<name>`. `Cancel`, or `Move to trash`: the folder
-  moves to `data/configurator/trash/<UTC time>/<name>/` and only then is its ledger row
+  moves to `data/workshop/trash/<UTC time>/<name>/` and only then is its ledger row
   dropped. A notification says where it went. Nothing is deleted. A cloned entry also carries
   "This entry is a copy; it never follows upstream." A shipped entry cannot be uninstalled.
 - **Record provenance** — for an unknown-origin entry: hash every file, resolve the ref's current
   commit with one `GET /repos/{repo}/commits/{ref}`, and write the ledger row. The note names
   the short commit or the responder's error. The folder itself is not touched.
 - **Install** — on a gallery row: shallow `git clone --depth 1` of the default branch into
-  `/tmp/configurator-install-<time>-<repo>`, then the repository's `mods/` folder named after
+  `/tmp/workshop-install-<time>-<repo>`, then the repository's `mods/` folder named after
   the repository (or its only one) is copied with `cp -R` into `mods/`. A taken name becomes
   `<name>-copy`, then `<name>-copy-2` and up. The files are hashed, the ledger row written
   with the resolved commit and ref, `herdr-app check <dest>` runs, and the clone is removed.
@@ -166,12 +166,12 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **Settings** — a field's draft is parsed against its type, minimum, maximum and pattern.
   An invalid draft is marked and nothing is written. A save writes only the changed keys into
   the entry's `mod.json` `settings` block (a value equal to the default is removed instead),
-  through a conditional write retried three times, plus `data/configurator/kept/<name>.json`
+  through a conditional write retried three times, plus `data/workshop/kept/<name>.json`
   retried twice; Herdr reloads the mod when the file is saved. Changing a draft never writes.
   A kept file's values and version are what a later update does not touch.
 - **Legacy carry-over** — on dialog load, values better-config kept under
   `~/.config/herdr-mods/better-config/*.json` are copied once into
-  `data/configurator/kept/<name>.json` where no kept file exists. The old mod is not modified
+  `data/workshop/kept/<name>.json` where no kept file exists. The old mod is not modified
   or removed.
 - **Writes** — every write is conditional: it names the text that was read and is retried
   when the file changed under it. A ledger that is not a version 1 object is reported
@@ -180,8 +180,8 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 
 ## Built from
 
-- `mods/configurator/mod.json`:
-  `{"$schema":"./mod.schema.json","version":"0.1.0","title":"Configurator",
+- `mods/workshop/mod.json`:
+  `{"$schema":"./mod.schema.json","version":"0.1.0","title":"Workshop",
   "place":"none","overlay":{"kind":"dialog","width":960,"height":680}}`.
   One folder, two copies: the docked one draws the tab bar (`props().overlay` absent), the
   overlay one draws the dialog (`props().overlay` set). They share no module state; the
@@ -193,7 +193,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   right-hand group: the Git panel button (drawn only where the layout's `panel-body` stack has a
   `graph` child, so the blocks icon keeps working as the entry point on a `tabs-graph` layout) and the
   blocks icon, which runs `mod.open`.
-- `main.js` (2356 lines): `class Configurator extends View`. `init` reads `props()`, creates
+- `main.js` (2356 lines): `class Workshop extends View`. `init` reads `props()`, creates
   the filter and provenance inputs in the overlay copy, and — unless `checking()` — spawns
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,
   `installed.json`, every `layouts/*.json` and the gallery cache. `render` branches on
@@ -204,9 +204,9 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   parse/serialize with its version gate, sha256 comparison → update decision, write plan and
   report, key conflict split, gallery response → rows and pages, cache shape, install
   folder-name collision, uninstall and trash paths, settings fields/drafts/validation and
-  kept copy. `node --test mods/configurator/*.test.js` runs 126 tests.
+  kept copy. `node --test mods/workshop/*.test.js` runs 126 tests.
 - `mod.schema.json` describes this mod's own `mod.json` only. It declares no `settings`
-  property: the Configurator has none of its own. At runtime it reads each entry's
+  property: the Workshop has none of its own. At runtime it reads each entry's
   `mods/<name>/mod.schema.json` for the settings form.
 - `herdr` calls: `appHome`, `home`, `exec`, `readTextFile`, `writeTextFile`, `checking`,
   `closeOverlay`, `props`, `shared` / `setShared` (drafts only), `theme`, `layouts()`, `keys()`,
@@ -218,7 +218,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - Programs: `git clone`, `git -C <folder> rev-parse HEAD` / `--abbrev-ref HEAD`, `herdr-app
   check <folder>`, `shasum -a 256` (via `find | xargs`), and `/bin/sh` for `ls -lR`, `ls -d
   */`, `mkdir -p`, `mv`, `cp`, `rm -rf`.
-- Icons: one 14 px SVG, `mods/configurator/icons/blocks.svg`, drawn with `svg(...)` so it
+- Icons: one 14 px SVG, `mods/workshop/icons/blocks.svg`, drawn with `svg(...)` so it
   follows the text colour.
 - Art: none. The preview is `herdr-app shot`, cropped to the dialog so nothing behind it is
   in the picture.
@@ -232,9 +232,9 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   network request and write sits behind `if (checking()) return;`. Without it, verifying the
   mod would rewrite the person's ledger and other files.
 - **`place: "none"` draws nothing on install.** A fresh copy appears only where a layout names
-  it: set the tabs block's content to `"content": { "mod": "configurator" }`. To take the blocks icon
+  it: set the tabs block's content to `"content": { "mod": "workshop" }`. To take the blocks icon
   away, point that block back at `tabs`.
-- **The ledger dies only with `data/configurator/`.** Uninstalling the Configurator leaves it
+- **The ledger dies only with `data/workshop/`.** Uninstalling the Workshop leaves it
   behind on purpose: it holds provenance for entries that outlive the dialog.
 - **Unknown origin is normal.** Anything hand-dropped into `mods/` has no provenance: it is
   listed, configurable and uninstallable, but never checked or updated until `Record provenance`
@@ -261,17 +261,17 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 
 ## Done when
 
-- `herdr-app check mods/configurator` exits 0, also from a fresh clone with no setup.
-- `node --test mods/configurator/*.test.js` passes (126 tests).
-- Copying the folder to `~/.config/herdr-app/mods/configurator` shows nothing until the
-  layout's tabs block names it (`"content": { "mod": "configurator" }`); then its blocks icon sits
+- `herdr-app check mods/workshop` exits 0, also from a fresh clone with no setup.
+- `node --test mods/workshop/*.test.js` passes (126 tests).
+- Copying the folder to `~/.config/herdr-app/mods/workshop` shows nothing until the
+  layout's tabs block names it (`"content": { "mod": "workshop" }`); then its blocks icon sits
   next to Files / Changes, and clicking it, or `herdr-app do mod.open '{"name":
-  "configurator"}'`, opens the dialog; and `herdr-app shot` shows both.
+  "workshop"}'`, opens the dialog; and `herdr-app shot` shows both.
 - The dialog lists every folder under `mods/` with `shipped` / `cloned` / `third_party` told
   apart, `better-config` among them as third party with unknown origin.
 - `Check updates` on a tracked entry lights its row dot when upstream is ahead and says
   `up to date` when not.
 - `Uninstall` on a throwaway entry says which layouts reference it, then moves the folder to
-  `data/configurator/trash/<time>/<name>/`.
+  `data/workshop/trash/<time>/<name>/`.
 - A settings save on `better-changes` writes only the changed keys into its `mod.json`
   `settings` and reloads the mod with the new value.

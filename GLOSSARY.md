@@ -1,4 +1,4 @@
-# Configurator
+# Workshop
 
 A Herdr mod that lists what is installed under `~/.config/herdr-app/mods/`, checks it against
 its upstream repository, updates it, uninstalls it, and edits its settings. This glossary
@@ -7,7 +7,7 @@ fixes the words the code and the dialogs use.
 ## Language
 
 **Entry**:
-One installed thing the Configurator lists — in v1, a folder under `mods/`.
+One installed thing the Workshop lists — in v1, a folder under `mods/`.
 _Avoid_: mod, package, item
 
 **Origin**:
@@ -23,7 +23,7 @@ updated.
 _Avoid_: origin data, metadata
 
 **Ledger**:
-The Configurator's own record of provenance for every entry, kept outside every managed
+The Workshop's own record of provenance for every entry, kept outside every managed
 mod so that updating or uninstalling one never touches it.
 _Avoid_: registry, database, state
 
@@ -43,7 +43,7 @@ dialog can say what breaks if it goes.
 _Avoid_: dependency check, usage scan
 
 **Trash**:
-`data/configurator/trash/<time>/` — where uninstalled files are moved instead of deleted, so
+`data/workshop/trash/<time>/` — where uninstalled files are moved instead of deleted, so
 an uninstall can be undone by hand.
 _Avoid_: backup
 

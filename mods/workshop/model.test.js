@@ -1,5 +1,5 @@
-// The pure half of the Configurator: folder listing → rows, Origin, filtering.
-// Run with `node --test mods/configurator/*.test.js`; no Herdr, no dependencies.
+// The pure half of the Workshop: folder listing → rows, Origin, filtering.
+// Run with `node --test mods/workshop/*.test.js`; no Herdr, no dependencies.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -855,8 +855,8 @@ test("trashStamp names a folder by the time, filesystem-safe and to the second",
 
 test("trashPath puts the entry's folder under the time inside the trash", () => {
   assert.equal(
-    trashPath("better-changes", { now: Date.UTC(2026, 10, 16, 16, 26, 19), trash: "data/configurator/trash" }),
-    "data/configurator/trash/2026-11-16T16-26-19Z/better-changes",
+    trashPath("better-changes", { now: Date.UTC(2026, 10, 16, 16, 26, 19), trash: "data/workshop/trash" }),
+    "data/workshop/trash/2026-11-16T16-26-19Z/better-changes",
   );
 });
 
@@ -887,14 +887,14 @@ test("a third-party entry's uninstall plan names the source, the trash destinati
   const plan = uninstallOf(scanOf(uninstallRows.find((row) => row.name === "better-changes")), {
     now: Date.UTC(2026, 10, 16, 16, 26, 19),
     mods: "mods",
-    trash: "data/configurator/trash",
+    trash: "data/workshop/trash",
   });
   assert.equal(plan.allowed, true);
   assert.equal(plan.reason, null);
   assert.equal(plan.note, null);
   assert.equal(plan.source, "mods/better-changes");
-  assert.equal(plan.trashFolder, "data/configurator/trash/2026-11-16T16-26-19Z");
-  assert.equal(plan.destination, "data/configurator/trash/2026-11-16T16-26-19Z/better-changes");
+  assert.equal(plan.trashFolder, "data/workshop/trash/2026-11-16T16-26-19Z");
+  assert.equal(plan.destination, "data/workshop/trash/2026-11-16T16-26-19Z/better-changes");
   assert.equal(
     plan.scanText,
     "2 layouts reference this entry: main, terminals. " +
@@ -903,7 +903,7 @@ test("a third-party entry's uninstall plan names the source, the trash destinati
   );
   assert.equal(
     plan.moveText,
-    "Nothing is deleted: better-changes moves to data/configurator/trash/2026-11-16T16-26-19Z/better-changes, and its ledger row is dropped.",
+    "Nothing is deleted: better-changes moves to data/workshop/trash/2026-11-16T16-26-19Z/better-changes, and its ledger row is dropped.",
   );
 });
 
@@ -1379,10 +1379,10 @@ test("an update for a name the ledger does not hold adds no row, and needs a com
   assert.deepEqual(updatedRow({ x: { repo: "o/r" } }, { name: "x", commit: "" }), { x: { repo: "o/r" } });
 });
 
-test("an update clones into its own temp folder under the Configurator's state", () => {
+test("an update clones into its own temp folder under the Workshop's state", () => {
   assert.equal(
     updateTempPath("better-changes", { now: 1794844800000 }),
-    "data/configurator/temp/update-better-changes-2026-11-16T16-00-00Z",
+    "data/workshop/temp/update-better-changes-2026-11-16T16-00-00Z",
   );
   assert.equal(updateTempPath("x", { now: 1794844800000, temp: "/tmp/here" }), "/tmp/here/update-x-2026-11-16T16-00-00Z");
 });
@@ -1407,7 +1407,7 @@ test("an install takes the mod folder's own name unless mods/ already has it", (
 
 test("a repository's mod folder is the one named after it, or its only one", () => {
   assert.equal(modFolderOf("better-changes", ["better-changes"]), "better-changes");
-  assert.equal(modFolderOf("herdr-configurator", ["configurator"]), "configurator");
+  assert.equal(modFolderOf("herdr-configurator", ["workshop"]), "workshop");
   assert.equal(modFolderOf("two", ["one", "two"]), "two");
   assert.equal(modFolderOf("multi", ["one", "two"]), null);
   assert.equal(modFolderOf("empty", []), null);

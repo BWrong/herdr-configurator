@@ -1,4 +1,4 @@
-// Configurator: the tab bar's blocks icon opens one dialog, and that dialog lists every entry under
+// Workshop: the tab bar's blocks icon opens one dialog, and that dialog lists every entry under
 // mods/ with its Origin, or — in its second view — the GitHub topic's installable mods. One
 // folder, two copies: props().overlay is set only in the dialog copy; the docked copy draws
 // the tab bar (tabbar.js).
@@ -95,7 +95,7 @@ const parseObject = (text) => {
 
 const asObject = (text) => parseObject(text) ?? {};
 
-export default class Configurator extends View {
+export default class Workshop extends View {
   init(_given, cx) {
     this.overlay = props()?.overlay ?? null;
     // The docked copy draws the tab bar; its init holds the scroll and panel state.
@@ -175,7 +175,7 @@ export default class Configurator extends View {
       });
     }
     this.entries = entries;
-    const read = parseLedger(await readTextFile(`${appHome()}/data/configurator/ledger.json`));
+    const read = parseLedger(await readTextFile(`${appHome()}/data/workshop/ledger.json`));
     this.ledger = read.entries;
     this.ledgerProblem = read.problem;
     this.installed = asObject(await readTextFile(`${appHome()}/installed.json`));
@@ -215,7 +215,7 @@ export default class Configurator extends View {
   }
 
   galleryPath() {
-    return `${appHome()}/data/configurator/gallery.json`;
+    return `${appHome()}/data/workshop/gallery.json`;
   }
 
   // The folder names under mods/, which are the entries and the names an install must avoid.
@@ -238,7 +238,7 @@ export default class Configurator extends View {
   // folder is returned with the failure too, so a failed install can say where it kept it.
   async cloneIntoTemp(repo) {
     const tail = String(repo).split("/")[1]?.replace(/[^A-Za-z0-9_.-]/g, "") || "mod";
-    const folder = `/tmp/configurator-install-${Date.now()}-${tail}`;
+    const folder = `/tmp/workshop-install-${Date.now()}-${tail}`;
     try {
       await exec("git", ["clone", "--depth", "1", `https://github.com/${repo}`, folder]);
       const commit = String((await exec("git", ["-C", folder, "rev-parse", "HEAD"])).stdout ?? "").trim();
@@ -302,7 +302,7 @@ export default class Configurator extends View {
       const text = galleryCacheText(this.gallery);
       if (text !== this.galleryRaw) {
         try {
-          await exec("mkdir", ["-p", `${appHome()}/data/configurator`]);
+          await exec("mkdir", ["-p", `${appHome()}/data/workshop`]);
           await writeTextFile(this.galleryPath(), text, this.galleryRaw);
           this.galleryRaw = text;
         } catch (e) {
@@ -360,7 +360,7 @@ export default class Configurator extends View {
 
   // The drafts a previous dialog copy left in shared.json, one object per entry.
   savedDrafts() {
-    const value = shared("configurator.drafts");
+    const value = shared("workshop.drafts");
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   }
 
@@ -369,7 +369,7 @@ export default class Configurator extends View {
     if (checking()) return;
     const drafts = {};
     for (const form of Object.values(this.forms)) drafts[form.name] = form.drafts;
-    setShared("configurator.drafts", drafts);
+    setShared("workshop.drafts", drafts);
   }
 
   // better-config kept its own values beside its mod. Carry them into our folder once, and
@@ -377,7 +377,7 @@ export default class Configurator extends View {
   async carryLegacy() {
     if (checking()) return;
     const source = `${home()}/.config/herdr-mods/better-config`;
-    const folder = `${appHome()}/data/configurator/kept`;
+    const folder = `${appHome()}/data/workshop/kept`;
     let names = [];
     try {
       const listing = await exec("/bin/sh", ["-c", 'cd "$1" 2>/dev/null && ls -1 *.json 2>/dev/null', "sh", source]);
@@ -405,7 +405,7 @@ export default class Configurator extends View {
   // Keep the version and the changed values outside the managed mod, conditionally.
   async keep(form) {
     if (checking()) return null;
-    const folder = `${appHome()}/data/configurator/kept`;
+    const folder = `${appHome()}/data/workshop/kept`;
     const path = `${folder}/${form.name}.json`;
     const text = `${JSON.stringify(keptShape(form.manifest), null, 2)}\n`;
     let failure = null;
@@ -459,7 +459,7 @@ export default class Configurator extends View {
   // reports a problem is left alone rather than replaced.
   async writeLedger(merge) {
     if (checking()) return null;
-    const folder = `${appHome()}/data/configurator`;
+    const folder = `${appHome()}/data/workshop`;
     const path = `${folder}/ledger.json`;
     let failure = null;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -756,10 +756,10 @@ export default class Configurator extends View {
   keysTrigger(t, detail) {
     if (!detail.keysAvailable) return div();
     const content = this.keyPanel === detail.name;
-    const trigger = this.button(t, `configurator-keys-${detail.name}`, "Key bindings", {
+    const trigger = this.button(t, `workshop-keys-${detail.name}`, "Key bindings", {
       on_click: (_e, cx) => this.openKeys(detail, cx),
     });
-    return Popup.new(`configurator-keys-popup-${detail.name}`, trigger)
+    return Popup.new(`workshop-keys-popup-${detail.name}`, trigger)
       .anchor("top_right")
       .when(content, (el) => el.content(this.keyPanelView(t, detail)));
   }
@@ -770,7 +770,7 @@ export default class Configurator extends View {
       state?.offer?.offered?.length || state?.offer?.conflicts?.length || state?.offer?.problems?.length,
     );
     return v_flex()
-      .id("configurator-keys-panel")
+      .id("workshop-keys-panel")
       .w(440)
       .p(12)
       .gap(6)
@@ -792,7 +792,7 @@ export default class Configurator extends View {
           )
           .child(
             div()
-              .id("configurator-keys-close")
+              .id("workshop-keys-close")
               .px(8)
               .py(2)
               .rounded(6)
@@ -859,7 +859,7 @@ export default class Configurator extends View {
                   )
                   .child(
                     div()
-                      .id(`configurator-copy-${id}-${group.section}-${binding.keys}`)
+                      .id(`workshop-copy-${id}-${group.section}-${binding.keys}`)
                       .h(20)
                       .px(7)
                       .flex()
@@ -893,7 +893,7 @@ export default class Configurator extends View {
             )
             .child(
               div()
-                .id(`configurator-copy-all-${id}`)
+                .id(`workshop-copy-all-${id}`)
                 .h(20)
                 .px(7)
                 .flex()
@@ -927,7 +927,7 @@ export default class Configurator extends View {
           .child(
             h_flex().child(
               div()
-                .id(`configurator-copy-conflicts-${id}`)
+                .id(`workshop-copy-conflicts-${id}`)
                 .h(20)
                 .px(7)
                 .flex()
@@ -979,7 +979,7 @@ export default class Configurator extends View {
   }
 
   settingControl(t, form, field, draft, problem) {
-    const id = `configurator-${form.name}-${field.key.replaceAll(".", "-")}`;
+    const id = `workshop-${form.name}-${field.key.replaceAll(".", "-")}`;
     if (field.type === "boolean") {
       const on = draft === true;
       return Checkbox.new(id)
@@ -1117,7 +1117,7 @@ export default class Configurator extends View {
 
   // Bottom right: the selected entry's settings, from its schema, in a scrolling body.
   settingsPane(t) {
-    const base = v_flex().id("configurator-settings").flex_1().min_h(0).rounded_br(10).bg(t.background);
+    const base = v_flex().id("workshop-settings").flex_1().min_h(0).rounded_br(10).bg(t.background);
     if (!this.loaded) {
       return base.px(14).py(10).child(div().text_size(12).text_color(t.dim).child("Loading…"));
     }
@@ -1161,7 +1161,7 @@ export default class Configurator extends View {
             el.child(div().text_size(11).text_color(t.dim).child(form.note)),
           )
           .child(
-            this.button(t, `configurator-save-${form.name}`, "Save", {
+            this.button(t, `workshop-save-${form.name}`, "Save", {
               solid: changed.length > 0,
               disarmed: changed.length === 0,
               on_click: (_e, cx) => this.save(form, cx),
@@ -1174,7 +1174,7 @@ export default class Configurator extends View {
           .flex_1()
           .min_h(0)
           .child(
-            v_flex().id("configurator-settings-body").size_full().overflow_y_scroll().py(4).pr(20).children(
+            v_flex().id("workshop-settings-body").size_full().overflow_y_scroll().py(4).pr(20).children(
               form.groups.map((group) =>
                 v_flex()
                   .flex_none()
@@ -1206,7 +1206,7 @@ export default class Configurator extends View {
               ),
             ),
           )
-          .child(Scrollbar.vertical("configurator-settings-body").mode("always").absolute().inset_0()),
+          .child(Scrollbar.vertical("workshop-settings-body").mode("always").absolute().inset_0()),
       );
   }
 
@@ -1255,7 +1255,7 @@ export default class Configurator extends View {
   seat(t, row) {
     const on = row.name === this.selected;
     return h_flex()
-      .id(`configurator-${row.name}`)
+      .id(`workshop-${row.name}`)
       .mx(6)
       .mr(14)
       .mb(2)
@@ -1306,7 +1306,7 @@ export default class Configurator extends View {
   detailPane(t) {
     const detail = this.detail;
     const base = v_flex()
-      .id("configurator-detail")
+      .id("workshop-detail")
       .max_h(300)
       .flex_none()
       .px(14)
@@ -1467,11 +1467,11 @@ export default class Configurator extends View {
   // row; every other Origin opens the confirm panel and moves nothing until it is pressed.
   uninstallButton(t, detail) {
     const plan = this.uninstall?.name === detail.name ? this.uninstall : null;
-    const trigger = this.button(t, `configurator-uninstall-${detail.name}`, this.uninstalling ? "Moving…" : "Uninstall", {
+    const trigger = this.button(t, `workshop-uninstall-${detail.name}`, this.uninstalling ? "Moving…" : "Uninstall", {
       disarmed: Boolean(refusalOf(detail.origin)) || this.uninstalling,
       on_click: (_e, cx) => this.openUninstall(detail, cx),
     });
-    return Popup.new(`configurator-uninstall-popup-${detail.name}`, trigger)
+    return Popup.new(`workshop-uninstall-popup-${detail.name}`, trigger)
       .anchor("top_right")
       .when(Boolean(plan), (el) => el.content(this.confirmPanel(t, plan)));
   }
@@ -1480,7 +1480,7 @@ export default class Configurator extends View {
   // Cancel. Nothing moves before Move to trash is pressed; a failed move keeps it open.
   confirmPanel(t, plan) {
     return v_flex()
-      .id("configurator-uninstall-panel")
+      .id("workshop-uninstall-panel")
       .w(360)
       .p(12)
       .gap(6)
@@ -1503,7 +1503,7 @@ export default class Configurator extends View {
           .gap(8)
           .child(
             div()
-              .id("configurator-uninstall-cancel")
+              .id("workshop-uninstall-cancel")
               .px(10)
               .py(3)
               .rounded(6)
@@ -1518,7 +1518,7 @@ export default class Configurator extends View {
           )
           .child(
             div()
-              .id("configurator-uninstall-confirm")
+              .id("workshop-uninstall-confirm")
               .px(10)
               .py(3)
               .rounded(6)
@@ -1538,7 +1538,7 @@ export default class Configurator extends View {
     this.uninstall = uninstallOf(detail, {
       now: Date.now(),
       mods: `${appHome()}/mods`,
-      trash: `${appHome()}/data/configurator/trash`,
+      trash: `${appHome()}/data/workshop/trash`,
     });
     cx.notify();
   }
@@ -1601,11 +1601,11 @@ export default class Configurator extends View {
   updateButton(t, detail) {
     const job = this.updateJob?.name === detail.name ? this.updateJob : null;
     const target = updateTargetOf(this.ledger[detail.name]);
-    const trigger = this.button(t, `configurator-update-${detail.name}`, this.updating ? "Updating…" : "Update", {
+    const trigger = this.button(t, `workshop-update-${detail.name}`, this.updating ? "Updating…" : "Update", {
       disarmed: Boolean(this.updating) || !target,
       on_click: (_e, cx) => this.startUpdate(detail, cx),
     });
-    return Popup.new(`configurator-update-popup-${detail.name}`, trigger)
+    return Popup.new(`workshop-update-popup-${detail.name}`, trigger)
       .anchor("top_right")
       .when(Boolean(job), (popup) => popup.content(this.updatePanel(t, job)));
   }
@@ -1614,7 +1614,7 @@ export default class Configurator extends View {
   // written at this point; Cancel closes the panel and leaves the folder byte-identical.
   updatePanel(t, job) {
     return v_flex()
-      .id("configurator-update-panel")
+      .id("workshop-update-panel")
       .w(360)
       .p(12)
       .gap(6)
@@ -1645,7 +1645,7 @@ export default class Configurator extends View {
           .gap(8)
           .child(
             div()
-              .id("configurator-update-cancel")
+              .id("workshop-update-cancel")
               .px(10)
               .py(3)
               .rounded(6)
@@ -1660,7 +1660,7 @@ export default class Configurator extends View {
           )
           .child(
             div()
-              .id("configurator-update-confirm")
+              .id("workshop-update-confirm")
               .px(10)
               .py(3)
               .rounded(6)
@@ -1699,12 +1699,12 @@ export default class Configurator extends View {
     });
   }
 
-  // One shallow clone of the recorded ref into the Configurator's own temp folder, then the
+  // One shallow clone of the recorded ref into the Workshop's own temp folder, then the
   // three hashes of every file. A failure reports the program's own text and keeps the
   // clone where it is, with nothing in the entry's folder touched.
   async runUpdate(name, target, cx) {
     const now = Date.now();
-    const folder = updateTempPath(name, { now, temp: `${appHome()}/data/configurator/temp` });
+    const folder = updateTempPath(name, { now, temp: `${appHome()}/data/workshop/temp` });
     const upstream = `${folder}/mods/${name}`;
     const fail = (error) => {
       this.updating = false;
@@ -1783,7 +1783,7 @@ export default class Configurator extends View {
     const plan = writePlan(job.comparison, { overwrite });
     if (plan.blocked) return;
     const folder = `${appHome()}/mods/${job.name}`;
-    const trashFolder = trashPath(job.name, { now: job.now, trash: `${appHome()}/data/configurator/trash` });
+    const trashFolder = trashPath(job.name, { now: job.now, trash: `${appHome()}/data/workshop/trash` });
     let moved = 0;
     try {
       if (plan.trash.length) await exec("/bin/sh", ["-c", 'mkdir -p "$1"', "sh", trashFolder]);
@@ -1883,7 +1883,7 @@ export default class Configurator extends View {
       )
       .child(
         div()
-          .id("configurator-record-provenance")
+          .id("workshop-record-provenance")
           .flex_none()
           .px(10)
           .py(3)
@@ -1917,7 +1917,7 @@ export default class Configurator extends View {
       .border_b(1)
       .border_color(t.border)
       .bg(t.surface)
-      .child(div().flex_none().text_size(13).font_semibold().text_color(t.foreground).child("Configurator"))
+      .child(div().flex_none().text_size(13).font_semibold().text_color(t.foreground).child("Workshop"))
       .child(
         div()
           .flex_none()
@@ -1928,7 +1928,7 @@ export default class Configurator extends View {
       .child(div().flex_1())
       .child(this.tabs(t))
       .child(
-        this.button(t, "configurator-close", "\u2715", {
+        this.button(t, "workshop-close", "\u2715", {
           on_click: (_e, _cx) => closeOverlay(this.overlay),
         }),
       );
@@ -1951,7 +1951,7 @@ export default class Configurator extends View {
   tabButton(t, tab, label) {
     const on = this.tab === tab;
     return div()
-      .id(`configurator-tab-${tab}`)
+      .id(`workshop-tab-${tab}`)
       .h_full()
       .px(10)
       .flex()
@@ -1969,7 +1969,7 @@ export default class Configurator extends View {
 
   // The filter box, with the category picker beside it: both narrow what the list shows.
   filterBox(t) {
-    const id = "configurator-category";
+    const id = "workshop-category";
     const choices = [
       { value: "all", label: "All" },
       { value: "shipped", label: ORIGIN_WORDS.shipped },
@@ -2057,7 +2057,7 @@ export default class Configurator extends View {
       .min_h(0)
       .child(
         v_flex()
-          .id("configurator-list")
+          .id("workshop-list")
           .size_full()
           .overflow_y_scroll()
           .py(2)
@@ -2073,7 +2073,7 @@ export default class Configurator extends View {
           )
           .children(rows.map((row) => this.seat(t, row))),
       )
-      .child(Scrollbar.vertical("configurator-list").mode("always").absolute().inset_0());
+      .child(Scrollbar.vertical("workshop-list").mode("always").absolute().inset_0());
   }
 
   // The gallery: one row per repository from the topic, and the Refresh action with the
@@ -2105,7 +2105,7 @@ export default class Configurator extends View {
           .min_h(0)
           .child(
             v_flex()
-              .id("configurator-gallery-list")
+              .id("workshop-gallery-list")
               .size_full()
               .overflow_y_scroll()
               .py(2)
@@ -2127,14 +2127,14 @@ export default class Configurator extends View {
               )
               .children(rows.map((row) => this.gallerySeat(t, row))),
           )
-          .child(Scrollbar.vertical("configurator-gallery-list").mode("always").absolute().inset_0()),
+          .child(Scrollbar.vertical("workshop-gallery-list").mode("always").absolute().inset_0()),
       )
       .child(this.galleryFooter(t));
   }
 
   gallerySeat(t, row) {
     return v_flex()
-      .id(`configurator-gallery-${row.repository}`)
+      .id(`workshop-gallery-${row.repository}`)
       .mx(6)
       .mr(14)
       .mb(2)
@@ -2151,7 +2151,7 @@ export default class Configurator extends View {
           .child(div().flex_none().text_size(11).text_color(t.dim).child(`\u2605 ${row.stars}`))
           .child(
             div()
-              .id(`configurator-gallery-install-${row.repository}`)
+              .id(`workshop-gallery-install-${row.repository}`)
               .flex_none()
               .h(24)
               .px(10)
@@ -2236,7 +2236,7 @@ export default class Configurator extends View {
           .items_center()
           .child(
             div()
-              .id("configurator-gallery-refresh")
+              .id("workshop-gallery-refresh")
               .h(24)
               .px(10)
               .flex()
@@ -2280,7 +2280,7 @@ export default class Configurator extends View {
           .items_center()
           .child(
             div()
-              .id("configurator-check-updates")
+              .id("workshop-check-updates")
               .h(24)
               .px(10)
               .flex()
@@ -2307,7 +2307,7 @@ export default class Configurator extends View {
   // The dialog copy: the view switch, then the default installed list or the gallery.
   dialog(t) {
     return v_flex()
-      .id("configurator-dialog")
+      .id("workshop-dialog")
       .size_full()
       .min_h(0)
       .rounded(10)

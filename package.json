@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test mods/configurator/*.test.js",
-    "check": "herdr-app check mods/configurator"
+    "test": "node --test mods/workshop/*.test.js",
+    "check": "herdr-app check mods/workshop"
   }
 }

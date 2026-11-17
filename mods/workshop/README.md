@@ -1,10 +1,10 @@
-# Configurator
+# Workshop
 
 One dialog for every entry under `~/.config/herdr-app/mods/`: what it is, where it came
 from, whether upstream has moved, and what it is set to. The window's tab bar holds the blocks icon
 that opens it, next to Files / Changes. It replaces `better-config`, and the settings values
 better-config kept are carried over once. A fresh install shows nothing until a layout names
-it: point the tabs block's content at the mod, `"content": { "mod": "configurator" }`.
+it: point the tabs block's content at the mod, `"content": { "mod": "workshop" }`.
 
 This mod has no settings of its own; it edits the settings of the entries it lists.
 
@@ -34,7 +34,7 @@ This mod has no settings of its own; it edits the settings of the entries it lis
 
 ## Where it keeps things
 
-Everything lives under `~/.config/herdr-app/data/configurator/`, outside every managed mod,
+Everything lives under `~/.config/herdr-app/data/workshop/`, outside every managed mod,
 so updating or uninstalling an entry never touches it:
 
 | File | What it holds |
@@ -45,7 +45,7 @@ so updating or uninstalling an entry never touches it:
 | `trash/<UTC time>/<name>/` | Folders moved by an uninstall, and files an update replaced. Recoverable by hand. |
 | `temp/update-<name>-<UTC time>/` | The shallow clone an update compares against; left in place when the run fails. |
 
-An install clones into `/tmp/configurator-install-<time>-<repo>` and removes it when the
+An install clones into `/tmp/workshop-install-<time>-<repo>` and removes it when the
 install succeeds; a failed install keeps it and says where.
 
 ## Requirements

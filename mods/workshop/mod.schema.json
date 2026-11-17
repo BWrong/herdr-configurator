@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Configurator mod.json",
-  "description": "What Herdr reads from Configurator's mod.json. The mod has no settings of its own.",
+  "title": "Workshop mod.json",
+  "description": "What Herdr reads from Workshop's mod.json. The mod has no settings of its own.",
   "type": "object",
   "properties": {
     "$schema": {

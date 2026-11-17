@@ -1,6 +1,6 @@
 # Herdr runtime, as this mod uses it
 
-Facts learned the hard way while building `mods/configurator/`. `~/.config/herdr-app/AGENTS.md`
+Facts learned the hard way while building `mods/workshop/`. `~/.config/herdr-app/AGENTS.md`
 (72 KB, rewritten by the app on every start) is the authority; this page is the short version
 for the questions that come up in this repo.
 
@@ -23,9 +23,9 @@ for the questions that come up in this repo.
   the folder to `mods/`, so any worktree's copy can be checked in place.
 - `herdr-app shot [file.png]` — saves the window frame (3796×2820 retina here).
 - `herdr-app status` — what the window shows, including open overlays.
-- `herdr-app do <name> <json>` — e.g. `mod.open '{"name": "configurator"}'`,
-  `overlay.close '{"id": "configurator"}'`, `layout.switch '{"name": "main-graph"}'`.
-- `node --test mods/configurator/*.test.js` — the pure half; no Herdr needed.
+- `herdr-app do <name> <json>` — e.g. `mod.open '{"name": "workshop"}'`,
+  `overlay.close '{"id": "workshop"}'`, `layout.switch '{"name": "main-graph"}'`.
+- `node --test mods/workshop/*.test.js` — the pure half; no Herdr needed.
   `npm test` runs it; CI runs only this, since `check` needs the macOS app.
 
 ## Mod shape
@@ -33,7 +33,7 @@ for the questions that come up in this repo.
 - `mod.json`: `$schema`, `version`, `title`, `place` (`left|right|top|bottom|none`), `size`,
   `focusable`, `overlay {kind: dialog|popup|window, width, height, frame}`, `settings`.
 - `place: "none"` draws nothing on its own: a layout must name it. Here the tabs block does
-  (`"content": {"mod": "configurator"}`), and one folder serves two copies — the docked one
+  (`"content": {"mod": "workshop"}`), and one folder serves two copies — the docked one
   draws the tab bar, the overlay one the dialog, told apart by `props().overlay`.
 - Saving any file in a mod folder reloads every copy in place.
 - No DOM, no HTML/CSS, no Node, no `setTimeout`. Drawing via `gpui-kit` (`div`, `svg`) and
@@ -51,7 +51,7 @@ for the questions that come up in this repo.
   content starts under the traffic lights (this is what `layouts/main.json` does, and why
   `main-graph.json` needed the same two keys on its outer node).
 - The tab bar's right-hand group (`+`, Files, Changes, Git) is drawn by the `tabs` mod, not by
-  the frame: there is no toolbar slot to inject into. `mods/configurator/tabbar.js` is a port
+  the frame: there is no toolbar slot to inject into. `mods/workshop/tabbar.js` is a port
   of `mods/tabs/main.js`; `scripts/tabs-diff.sh` shows how far it has drifted.
 
 ## Gallery and GitHub

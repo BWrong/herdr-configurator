@@ -1,4 +1,4 @@
-// model.js: the pure half of the Configurator — which entries exist, what each one's
+// model.js: the pure half of the Workshop — which entries exist, what each one's
 // Origin is, which rows a typed filter keeps, and what a GitHub topic search means. No
 // Herdr calls here, so `node --test` runs it as it is.
 
@@ -280,7 +280,7 @@ export function galleryPagePlan(totalCount, perPage = GALLERY_PER_PAGE) {
   return Array.from({ length: pages }, (_unused, index) => index + 1);
 }
 
-// The cached gallery (`data/configurator/gallery.json`) as rows and the time they were
+// The cached gallery (`data/workshop/gallery.json`) as rows and the time they were
 // fetched; an absent or unusable cache is an empty gallery, never an error.
 export function galleryCacheOf(text) {
   try {
@@ -381,7 +381,7 @@ export function trashStamp(now = Date.now()) {
 }
 
 // The folder an uninstalled entry moves to: trash/<time>/<name>. Never deleted.
-export function trashPath(name, { now = Date.now(), trash = "data/configurator/trash" } = {}) {
+export function trashPath(name, { now = Date.now(), trash = "data/workshop/trash" } = {}) {
   return `${trash}/${trashStamp(now)}/${name}`;
 }
 
@@ -424,7 +424,7 @@ export function updateNoteOf(origin, target) {
 // Everything the confirm panel needs for one entry: the Reference scan's answer, the
 // source → destination of the move, and the reason an Origin refuses it. Nothing moves
 // until the person presses the panel's own button.
-export function uninstallOf(detail, { now = Date.now(), mods = "mods", trash = "data/configurator/trash" } = {}) {
+export function uninstallOf(detail, { now = Date.now(), mods = "mods", trash = "data/workshop/trash" } = {}) {
   const name = typeof detail?.name === "string" ? detail.name : "";
   const origin = detail?.origin ?? "third_party";
   const scan = { layouts: detail?.scan?.layouts ?? [], keys: detail?.scan?.keys ?? [] };
@@ -460,9 +460,9 @@ export function withoutEntry(entries, name) {
 // Update: three hashes per file — the ledger's, the local copy's, upstream's — and the plan
 // they produce. Nothing here touches the disk; main.js clones, moves and writes.
 
-// The folder one update clones upstream into, under the Configurator's own state and left
+// The folder one update clones upstream into, under the Workshop's own state and left
 // in place when the run fails, so it can be looked at.
-const UPDATE_TEMP = "data/configurator/temp";
+const UPDATE_TEMP = "data/workshop/temp";
 
 export function updateTempPath(name, { now = Date.now(), temp = UPDATE_TEMP } = {}) {
   return `${temp}/update-${name}-${trashStamp(now)}`;
@@ -575,7 +575,7 @@ export function updateTargetOf(recorded) {
   return { repo, ref, commit: firstString(recorded.commit), files: recorded.files };
 }
 
-// Ledger: the Configurator's own record of provenance, kept in its state directory. Its
+// Ledger: the Workshop's own record of provenance, kept in its state directory. Its
 // entries map is what rowsOf, originOf and detailOf read; writes go through ledgerJson.
 
 const LEDGER_VERSION = 1;
@@ -938,7 +938,7 @@ export function mergeSettings(manifest, { values = {}, remove = [] } = {}) {
   return out;
 }
 
-// The copy the Configurator keeps outside the managed mod: its version and values.
+// The copy the Workshop keeps outside the managed mod: its version and values.
 export function keptShape(manifest) {
   return {
     version: typeof manifest?.version === "string" ? manifest.version : null,

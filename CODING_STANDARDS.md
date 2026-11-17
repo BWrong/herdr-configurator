@@ -1,7 +1,7 @@
 # Coding standards
 
 Read at review, not while implementing. Only the judgement calls — anything a check could
-enforce lives in `mods/configurator/vocabulary.test.js` or the tests beside it.
+enforce lives in `mods/workshop/vocabulary.test.js` or the tests beside it.
 
 ## Every path to a side effect passes a `checking()` return
 
