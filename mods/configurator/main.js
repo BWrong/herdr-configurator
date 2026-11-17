@@ -112,6 +112,8 @@ export default class Configurator extends View {
     this.selected = null;
     this.detail = null;
     this.filter = "";
+    this.originFilter = "all";
+    this.openCategory = false;
     this.loaded = false;
     this.tab = "installed";
     this.gallery = { fetchedAt: null, rows: [] };
@@ -139,6 +141,7 @@ export default class Configurator extends View {
       this.input = InputState.new({ placeholder: "Filter entries…" });
       this.input.on("change", (_e, cx) => {
         this.filter = this.input.value();
+        this.followVisible(cx);
         cx.notify();
       });
       this.input.focus();
@@ -188,7 +191,8 @@ export default class Configurator extends View {
     this.buildForms();
     await this.carryLegacy();
     this.loaded = true;
-    if (!this.rows.some((row) => row.name === this.selected)) this.selected = this.rows[0]?.name ?? null;
+    if (!this.visibleRows().some((row) => row.name === this.selected))
+      this.selected = this.visibleRows()[0]?.name ?? null;
     this.detail = await this.detailFor(this.selected);
   }
 
@@ -1211,9 +1215,27 @@ export default class Configurator extends View {
   }
 
   originWord(row) {
-    return row.origin === "third_party" && row.unknown
-      ? `${ORIGIN_WORDS.third_party} · unknown`
-      : ORIGIN_WORDS[row.origin];
+    return ORIGIN_WORDS[row.origin];
+  }
+
+  // The Installed rows the filter and the category both keep; one answer for the list, the
+  // count and the arrow keys.
+  visibleRows() {
+    return filterRows(this.rows, this.filter, this.originFilter);
+  }
+
+  // A selection the filter hides hands over to the first row it leaves, so the detail never
+  // describes a row nobody can see; nothing left means nothing described.
+  followVisible(cx) {
+    const rows = this.visibleRows();
+    if (rows.some((row) => row.name === this.selected)) return;
+    if (!rows.length) {
+      this.selected = null;
+      this.detail = null;
+      cx.notify();
+      return;
+    }
+    this.selectRow(rows[0].name, cx);
   }
 
   // Both the click and the arrow keys land here, so they cannot drift apart.
@@ -1221,6 +1243,7 @@ export default class Configurator extends View {
     if (name === this.selected) return;
     this.selected = name;
     this.openSelect = null;
+    this.openCategory = false;
     this.hoveredField = null;
     this.sourceNote = "";
     this.sourceRepo.set_value("");
@@ -1872,7 +1895,7 @@ export default class Configurator extends View {
   header(t) {
     const count =
       this.tab === "installed"
-        ? filterRows(this.rows, this.filter).length
+        ? this.visibleRows().length
         : galleryFiltered(this.gallery.rows, this.galleryText).length;
     return h_flex()
       .flex_none()
@@ -1933,24 +1956,90 @@ export default class Configurator extends View {
       .child(label);
   }
 
+  // The filter box, with the category picker beside it: both narrow what the list shows.
   filterBox(t) {
+    const id = "configurator-category";
+    const choices = [
+      { value: "all", label: "All" },
+      { value: "shipped", label: ORIGIN_WORDS.shipped },
+      { value: "cloned", label: ORIGIN_WORDS.cloned },
+      { value: "third_party", label: ORIGIN_WORDS.third_party },
+    ];
+    const open = this.openCategory;
+    const now = choices.find((choice) => choice.value === this.originFilter) ?? choices[0];
+    const trigger = h_flex()
+      .id(`${id}-trigger`)
+      .w(96)
+      .flex_none()
+      .h(30)
+      .px(8)
+      .gap(4)
+      .items_center()
+      .rounded(7)
+      .border_1()
+      .border_color(open ? t.accent : t.border)
+      .bg(t.background)
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .on_click((_e, cx) => {
+        this.openCategory = !open;
+        cx.notify();
+      })
+      .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.foreground).child(now.label))
+      .child(div().text_size(10.5).text_color(t.dim).child("▾"));
+    const menu = v_flex()
+      .id(`${id}-menu`)
+      .w(130)
+      .p(4)
+      .rounded(7)
+      .border_1()
+      .border_color(t.border)
+      .bg(t.popover)
+      .children(
+        choices.map((choice, index) =>
+          h_flex()
+            .id(`${id}-option-${index}`)
+            .h(26)
+            .px(8)
+            .rounded(5)
+            .items_center()
+            .cursor_pointer()
+            .when(choice.value === this.originFilter, (el) => el.bg(t.selected))
+            .hover((s) => s.bg(t.hover))
+            .on_click((_e, cx) => {
+              this.originFilter = choice.value;
+              this.openCategory = false;
+              this.handle.focus();
+              this.followVisible(cx);
+              cx.notify();
+            })
+            .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.foreground).child(choice.label)),
+        ),
+      );
     return div().p(10).flex_none().child(
-      div()
-        .h(30)
-        .px(8)
-        .flex()
-        .items_center()
-        .rounded(7)
-        .border_1()
-        .border_color(t.border)
-        .bg(t.background)
-        .child(Input.new(this.input).h(28).w_full().text_size(12.5).text_color(t.foreground)),
+      h_flex()
+        .gap(6)
+        .child(
+          div()
+            .flex_1()
+            .min_w(0)
+            .h(30)
+            .px(8)
+            .flex()
+            .items_center()
+            .rounded(7)
+            .border_1()
+            .border_color(t.border)
+            .bg(t.background)
+            .child(Input.new(this.input).h(28).w_full().text_size(12.5).text_color(t.foreground)),
+        )
+        .child(Popup.new(`${id}-popup`, trigger).anchor("bottom_right").when(open, (el) => el.content(menu))),
     );
   }
 
   // The installed entries: the filter's rows, one per entry, scrolling.
   entriesPane(t) {
-    const rows = filterRows(this.rows, this.filter);
+    const rows = this.visibleRows();
     return div()
       .relative()
       .flex_1()
@@ -2211,11 +2300,16 @@ export default class Configurator extends View {
       .on_key_down((e, cx) => {
         if (e.key === "escape") {
           cx.stop_propagation();
+          if (this.openCategory) {
+            this.openCategory = false;
+            cx.notify();
+            return;
+          }
           closeOverlay(this.overlay);
           return;
         }
         if (this.tab !== "installed" || e.key !== "up" && e.key !== "down") return;
-        const rows = filterRows(this.rows, this.filter);
+        const rows = this.visibleRows();
         if (!rows.length) return;
         cx.stop_propagation();
         const at = rows.findIndex((row) => row.name === this.selected);

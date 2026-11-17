@@ -1635,3 +1635,16 @@ test("the gallery filter matches a description too and says so when nothing does
   ]);
   assert.deepEqual(galleryFiltered(GALLERY_ROWS, "nothing here"), []);
 });
+
+test("the category keeps only the Origin it names", () => {
+  const rows = [
+    { name: "changes", title: "Changes", origin: "shipped" },
+    { name: "catppuccin-changes", title: "catppuccin-changes", origin: "cloned" },
+    { name: "better-changes", title: "Better Changes", origin: "third_party" },
+  ];
+  assert.deepEqual(filterRows(rows, "", "all"), rows);
+  assert.deepEqual(filterRows(rows, "", "third_party").map((row) => row.name), ["better-changes"]);
+  assert.deepEqual(filterRows(rows, "", "cloned").map((row) => row.name), ["catppuccin-changes"]);
+  assert.deepEqual(filterRows(rows, "changes", "cloned").map((row) => row.name), ["catppuccin-changes"]);
+  assert.deepEqual(filterRows(rows, "better", "shipped"), []);
+});

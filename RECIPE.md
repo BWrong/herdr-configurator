@@ -22,12 +22,15 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
 **Left column**, 320 px, `surface` background, in the Installed view only:
 
 - A filter box with 10 px padding, 30 px tall, rounded 7 px, the `background` colour, a
-  `border` line, placeholder "Filter entries…", 12.5 px text.
+  `border` line, placeholder "Filter entries…", 12.5 px text; beside it, 96 px of the same
+  shape, the category: `All`, `shipped`, `cloned` or `third_party` at 11.5 px with a `▾`, and
+  a 130 px `popover` menu of those four, anchored under it.
 - Under it the list, one row per entry, 40 px tall, 10 px left padding, 24 px right padding
   clear of the scrollbar, a 1 px `border` line under each row: the first line is the title at
   13 px, with a 5 × 5 px dot at its right only when the entry has a check state (`accent` for
   upstream moved, `border` for up to date, `ansi1` for check failed); the second line is the
-  Origin word at 11 px `dim` (`shipped`, `cloned`, `third_party` or `third_party · unknown`).
+  Origin word at 11 px `dim` (`shipped`, `cloned` or `third_party`; the pane says when no
+  repository is recorded, the row does not).
   The selected row is `selected`, hover is `hover`, and a `Scrollbar` runs always. Empty:
   "No entries match." or "Loading…".
 - Under the list, a sticky row with 10 px padding and a 1 px top border: a note at 11 px
@@ -99,8 +102,11 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **Selecting a row** — the detail is read from disk for that entry and swapped in place;
   settings drafts are mirrored to `shared.json` (`configurator.drafts`) and re-applied when
   the form is built again, so closing and reopening the dialog keeps them.
-- **Filter** — matches a row's title or folder name, ignoring case and padding; the Gallery's
-  search matches a repository's name or description the same way.
+- **Filter** — matches a row's title or folder name, ignoring case and padding; the category
+  keeps only the Origin it names, and the two narrow together. The Gallery's search matches a
+  repository's name or description the same way.
+- **A hidden selection** — when the filter or the category hide the selected row, the first
+  row they leave becomes the selection, so the pane never describes a row nobody can see.
 - **Arrow keys** — `up` and `down` move the selection through the filtered rows and wrap, the
   same as clicking a row; Escape or `✕` closes the dialog.
 - **Installed vs Gallery** — Installed needs no network. Opening Gallery reads only the cache
@@ -180,7 +186,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   right-hand group: the Git panel button (drawn only where the layout's `panel-body` stack has a
   `graph` child, so the gear keeps working as the entry point on a `tabs-graph` layout) and the
   gear, which runs `mod.open`.
-- `main.js` (2262 lines): `class Configurator extends View`. `init` reads `props()`, creates
+- `main.js` (2356 lines): `class Configurator extends View`. `init` reads `props()`, creates
   the filter and provenance inputs in the overlay copy, and — unless `checking()` — spawns
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,
   `installed.json`, every `layouts/*.json` and the gallery cache. `render` branches on
@@ -191,7 +197,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   parse/serialize with its version gate, sha256 comparison → update decision, write plan and
   report, key conflict split, gallery response → rows and pages, cache shape, install
   folder-name collision, uninstall and trash paths, settings fields/drafts/validation and
-  kept copy. `node --test mods/configurator/*.test.js` runs 125 tests.
+  kept copy. `node --test mods/configurator/*.test.js` runs 126 tests.
 - `mod.schema.json` describes this mod's own `mod.json` only. It declares no `settings`
   property: the Configurator has none of its own. At runtime it reads each entry's
   `mods/<name>/mod.schema.json` for the settings form.
@@ -249,7 +255,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 ## Done when
 
 - `herdr-app check mods/configurator` exits 0, also from a fresh clone with no setup.
-- `node --test mods/configurator/*.test.js` passes (125 tests).
+- `node --test mods/configurator/*.test.js` passes (126 tests).
 - Copying the folder to `~/.config/herdr-app/mods/configurator` shows nothing until the
   layout's tabs block names it (`"content": { "mod": "configurator" }`); then its gear sits
   next to Files / Changes, and clicking it, or `herdr-app do mod.open '{"name":

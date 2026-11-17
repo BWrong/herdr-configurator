@@ -47,12 +47,13 @@ export function rowsOf(entries, { installed = {}, ledger = {} } = {}) {
 }
 
 // The rows whose title or folder name contains the typed text, ignoring case and padding.
-export function filterRows(rows, query) {
+export function filterRows(rows, query, origin = "all") {
+  const kept = origin && origin !== "all" ? rows.filter((row) => row.origin === origin) : rows;
   const needle = String(query ?? "")
     .trim()
     .toLowerCase();
-  if (!needle) return rows;
-  return rows.filter(
+  if (!needle) return kept;
+  return kept.filter(
     (row) => row.title.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle),
   );
 }
