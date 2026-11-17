@@ -1407,7 +1407,7 @@ test("an install takes the mod folder's own name unless mods/ already has it", (
 
 test("a repository's mod folder is the one named after it, or its only one", () => {
   assert.equal(modFolderOf("better-changes", ["better-changes"]), "better-changes");
-  assert.equal(modFolderOf("herdr-configurator", ["workshop"]), "workshop");
+  assert.equal(modFolderOf("herdr-workshop", ["workshop"]), "workshop");
   assert.equal(modFolderOf("two", ["one", "two"]), "two");
   assert.equal(modFolderOf("multi", ["one", "two"]), null);
   assert.equal(modFolderOf("empty", []), null);
@@ -1614,7 +1614,7 @@ test("the pure half of the flow leaves the person's keys file untouched", () => 
 const GALLERY_ROWS = [
   { repository: "herdrdev/tmux-prefix", stars: 12, description: "tmux style prefix", pushedAt: "2 days ago" },
   { repository: "munza/herdr-mods", stars: 4, description: "Better config and better files", pushedAt: "5 days ago" },
-  { repository: "BWrong/herdr-configurator", stars: 1, description: "", pushedAt: "today" },
+  { repository: "BWrong/herdr-workshop", stars: 1, description: "", pushedAt: "today" },
 ];
 
 test("the gallery keeps every row when nothing is typed", () => {
@@ -1627,7 +1627,7 @@ test("the gallery filter matches a repository however it is typed", () => {
     "herdrdev/tmux-prefix",
   ]);
   assert.deepEqual(galleryFiltered(GALLERY_ROWS, "bwrong/herdr").map((row) => row.repository), [
-    "BWrong/herdr-configurator",
+    "BWrong/herdr-workshop",
   ]);
 });
 
