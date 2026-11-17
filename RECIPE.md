@@ -32,8 +32,8 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
   failed); 1 px below it the Origin word at 11 px `dim` (`shipped`, `cloned` or
   `third_party`; the pane says when no repository is recorded, the row does not).
   The selected row is `selected`, its title semibold, and a 2 × 22 px `accent` bar marks its
-  left edge; hover is `hover`; a `Scrollbar` runs always. Empty: "No entries match." or
-  "Loading…".
+  left edge; hover is `hover`; its own bar runs always (`overflow_y_scrollbar`). Empty:
+  "No entries match." or "Loading…".
 - Under the list, a sticky row with 10 px padding and a 1 px top border: a note at 11 px
   `dim`, and one `Check updates` button 24 px tall, rounded 6 px, 11.5 px, `background`
   colour, `border` line. While it runs it reads "Checking…".
@@ -42,13 +42,16 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
 
 - A search box 14 px in, 30 px tall, the shape of the filter, placeholder
   "Search repositories…".
-- One row per repository, 6 px in from either edge, 14 px clear on the right, rounded 6 px,
-  10 px inside horizontally and 9 px vertically, 2 px between rows, no separators: two lines
-  each, on the first the repository name at 13 px, `★ n` at 11 px `dim` and an `Install`
-  button 24 px tall at the right; on the second its description at 11 px `muted` (or
+- One row per repository, 52 px tall, 10 px in from either edge, 14 px clear on the right,
+  rounded 6 px, no separators: two lines each, on the first the repository name at 13 px
+  and `★ n` at 11 px `dim` at the right; on the second its description at 11 px `muted` (or
   "No description.") with "Pushed YYYY-MM-DD" — the date only — at 11 px `dim` at the right.
-  The footer holds the responder's error at 11 px `blocked`, a `Refresh` button 24 px tall,
-  and "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet").
+  Clicking a row selects it (`selected` colour); rows themselves carry no button, because a
+  virtual list refuses handlers inside its renderer.
+  The footer holds the responder's error at 11 px `blocked`, the last install report (with any
+  key bindings the repository offers), `Refresh` and `Install` buttons 24 px tall, and
+  "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet"). `Install` is dim until a
+  row is selected and installs the selected repository; while it runs it reads "Installing…".
   Empty: "No gallery rows yet. Refresh to fetch them.", "No repository matches." while
   searching, or "Refreshing…", which becomes "Refreshing… page 2 of 9" once the page count is
   known (nine pages take about half a minute).
@@ -211,7 +214,8 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,
   `installed.json`, every `layouts/*.json` and the gallery cache. `render` branches on
   `props().overlay`. Elements come from `gpui-kit` (`View`, `div`, `svg`) and `gpui-base`
-  (`v_flex`, `h_flex`, `Scrollbar`, `InputState`, `Input`, `Select`, `Popup`, `Checkbox`).
+  (`v_flex`, `h_flex`, `Scrollbar`, `v_virtual_list`, `InputState`, `Input`, `Select`, `Popup`,
+  `Checkbox`).
 - `model.js` (1015 lines): the pure half. No Herdr calls, so `node --test` runs it: folder
   listing → rows, Origin, filter, file sizes, detail and Reference scan text, ledger
   parse/serialize with its version gate, sha256 comparison → update decision, write plan and
@@ -259,8 +263,10 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   message rather than retrying.
 - **V1 has no layouts of its own** — `layouts()` is only read to answer the Reference scan.
 - **Sizes**: 960 × 680 is the dialog's size, not a minimum; a narrow window clips the left
-  column first. The list has no row cap; the `Scrollbar` handles the rest; the detail pane
-  grows with its contents up to 300 px, so wrapped file chips cannot clip the action row.
+  column first. The installed list has no row cap. The Gallery is a virtual list
+  (`v_virtual_list`, one 52 px row height): 807 repositories cost what the twelve on screen
+  cost, and its bar is a paired `Scrollbar.vertical(…).viewport_from_layout()`. The detail
+  pane grows with its contents up to 300 px, so wrapped file chips cannot clip the action row.
 - **`Key bindings` appears only when it has something to read**: a third-party entry with a
   local `keys.json` or a recorded repository. Shipped and cloned entries show no trigger.
 - **No Open action.** Entries with a `place` open from their own dock; an entry with

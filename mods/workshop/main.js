@@ -4,7 +4,7 @@
 // the tab bar (tabbar.js).
 
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex, Scrollbar, InputState, Input, Select, Popup, Checkbox } from "gpui-base";
+import { v_flex, h_flex, Scrollbar, v_virtual_list, InputState, Input, Select, Popup, Checkbox } from "gpui-base";
 import {
   appHome,
   home,
@@ -84,6 +84,8 @@ const ORIGIN_WORDS = { shipped: "shipped", cloned: "cloned", third_party: "third
 // A row's check state as a dot colour and as the word the detail pane says.
 const CHECK_DOTS = { moved: "accent", current: "border", failed: "ansi1" };
 const CHECK_WORDS = { moved: "upstream moved", current: "up to date", failed: "check failed" };
+// Every gallery row is one fixed height, which is what a virtual list needs (`v_virtual_list`).
+const GALLERY_ROW_HEIGHT = 52;
 
 const parseObject = (text) => {
   try {
@@ -119,6 +121,7 @@ export default class Workshop extends View {
     this.tab = "installed";
     this.gallery = { fetchedAt: null, rows: [] };
     this.galleryProgress = null;
+    this.gallerySelected = null;
     this.galleryText = "";
     this.galleryRaw = null;
     this.galleryError = null;
@@ -1214,7 +1217,7 @@ export default class Workshop extends View {
           .flex_1()
           .min_h(0)
           .child(
-            v_flex().id("workshop-settings-body").size_full().overflow_y_scroll().py(4).pr(20).children(
+            v_flex().id("workshop-settings-body").size_full().overflow_y_scrollbar().mode("always").py(4).pr(20).children(
               form.groups.map((group) =>
                 v_flex()
                   .flex_none()
@@ -1246,7 +1249,7 @@ export default class Workshop extends View {
               ),
             ),
           )
-          .child(Scrollbar.vertical("workshop-settings-body").mode("always").absolute().inset_0()),
+
       );
   }
 
@@ -2108,7 +2111,8 @@ export default class Workshop extends View {
         v_flex()
           .id("workshop-list")
           .size_full()
-          .overflow_y_scroll()
+          .overflow_y_scrollbar()
+          .mode("always")
           .py(2)
           .when(rows.length === 0, (el) =>
             el.child(
@@ -2122,7 +2126,7 @@ export default class Workshop extends View {
           )
           .children(rows.map((row) => this.seat(t, row))),
       )
-      .child(Scrollbar.vertical("workshop-list").mode("always").absolute().inset_0());
+
   }
 
   // The gallery: one row per repository from the topic, and the Refresh action with the
@@ -2148,57 +2152,65 @@ export default class Workshop extends View {
             .child(Input.new(this.galleryInput).h(28).w_full().text_size(12.5).text_color(t.foreground)),
         ),
       )
-      .child(
-        div()
-          .relative()
-          .w_full()
-          .flex_1()
-          .min_h(0)
-          .child(
-            v_flex()
-              .id("workshop-gallery-list")
-              .w_full()
-              .flex_1()
-              .min_h(0)
-              .overflow_y_scroll()
-              .py(2)
-              .when(rows.length === 0, (el) =>
-                el.child(
-                  div()
-                    .px(10)
-                    .py(8)
-                    .text_size(12)
-                    .text_color(t.dim)
-                    .child(
-                      this.refreshing
-                        ? this.galleryProgress
-                          ? `Refreshing… page ${this.galleryProgress.page} of ${this.galleryProgress.pages}`
-                          : "Refreshing…"
-                        : this.galleryText
-                          ? "No repository matches."
-                          : "No gallery rows yet. Refresh to fetch them.",
-                    ),
-                ),
-              )
-              .children(rows.map((row) => this.gallerySeat(t, row))),
-          )
-          .child(Scrollbar.vertical("workshop-gallery-list").mode("always").absolute().inset_0()),
+      .when(rows.length === 0, (el) =>
+        el.child(
+          div()
+            .px(14)
+            .py(8)
+            .text_size(12)
+            .text_color(t.dim)
+            .child(
+              this.refreshing
+                ? this.galleryProgress
+                  ? `Refreshing… page ${this.galleryProgress.page} of ${this.galleryProgress.pages}`
+                  : "Refreshing…"
+                : this.galleryText
+                  ? "No repository matches."
+                  : "No gallery rows yet. Refresh to fetch them.",
+            ),
+        ),
       )
-      .child(this.galleryFooter(t));
+      // A virtual list draws only the rows on screen: 807 repositories cost what 12 do.
+      .when(rows.length > 0, (el) =>
+        el.child(
+          div()
+            .relative()
+            .w_full()
+            .flex_1()
+            .min_h(0)
+            .child(
+              v_virtual_list(
+                "workshop-gallery-list",
+                rows.length,
+                GALLERY_ROW_HEIGHT,
+                (index) => rows[index].repository,
+                (range) => rows.slice(range.start, range.end).map((row) => this.galleryRow(t, row)),
+              )
+                .size_full()
+                .on_item_click((key, cx) => {
+                  this.gallerySelected = key;
+                  cx.notify();
+                }),
+            )
+            .child(Scrollbar.vertical("workshop-gallery-list").viewport_from_layout().absolute().inset_0()),
+        ),
+      )
+      .child(this.galleryFooter(t, rows));
   }
 
-  gallerySeat(t, row) {
+  // A virtual list forbids handlers inside its renderer, so a row is plain drawing: the list's
+  // own `on_item_click` names the repository, and the footer installs the one it named.
+  galleryRow(t, row) {
+    const on = row.repository === this.gallerySelected;
     return v_flex()
-      .id(`workshop-gallery-${row.repository}`)
+      .h(GALLERY_ROW_HEIGHT)
       .flex_none()
-      .mx(6)
-      .mr(14)
-      .mb(2)
+      .pl(10)
+      .pr(14)
+      .py(8)
       .gap(2)
-      .px(10)
-      .py(9)
       .rounded(6)
-      .hover((s) => s.bg(t.hover))
+      .when(on, (el) => el.bg(t.selected))
       .child(
         h_flex()
           .w_full()
@@ -2206,31 +2218,7 @@ export default class Workshop extends View {
           .gap(10)
           .items_center()
           .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(t.foreground).child(row.repository))
-          .child(div().flex_none().text_size(11).text_color(t.dim).child(`\u2605 ${row.stars}`))
-          .child(
-            div()
-              .id(`workshop-gallery-install-${row.repository}`)
-              .flex_none()
-              .h(24)
-              .px(10)
-              .flex()
-              .items_center()
-              .rounded(6)
-              .border_1()
-              .border_color(t.border)
-              .bg(t.background)
-              .text_size(11.5)
-              .text_color(this.installing === row.repository ? t.dim : t.foreground)
-              .cursor_pointer()
-              .hover((s) => s.bg(t.hover))
-              .on_click((_e, cx) => {
-                if (checking() || this.installing) return;
-                cx.spawn(async (cx) => {
-                  await this.install(row, cx);
-                });
-              })
-              .child(this.installing === row.repository ? "Installing\u2026" : "Install"),
-          ),
+          .child(div().flex_none().text_size(11).text_color(t.dim).child(`\u2605 ${row.stars}`)),
       )
       .child(
         h_flex()
@@ -2248,38 +2236,15 @@ export default class Workshop extends View {
               .child(row.description || "No description."),
           )
           .child(div().flex_none().text_size(11).text_color(t.dim).child(`Pushed ${row.pushedAt.slice(0, 10)}`)),
-      )
-      .when(this.installNote?.repository === row.repository, (el) =>
-        el.child(
-          v_flex()
-            .gap(4)
-            .child(
-              div()
-                .min_w(0)
-                .text_size(11)
-                .text_color(this.installNote.error ? t.blocked : t.dim)
-                .child(this.installNote.text),
-            )
-            .when(Boolean(this.installNote.keysError), (inner) =>
-              inner.child(div().min_w(0).text_size(11).text_color(t.blocked).child(this.installNote.keysError)),
-            )
-            .when(
-              Boolean(
-                this.installNote.keys?.offered?.length ||
-                  this.installNote.keys?.conflicts?.length ||
-                  this.installNote.keys?.problems?.length,
-              ),
-              (inner) =>
-                inner.child(this.keyOfferBlock(t, this.installNote.keys, `install-${row.repository}`)),
-            ),
-        ),
       );
   }
 
-  galleryFooter(t) {
+  galleryFooter(t, rows) {
     const cached = this.gallery.fetchedAt
       ? `Cached ${this.gallery.fetchedAt.slice(0, 16).replace("T", " ")}`
       : "Not fetched yet";
+    const selected = rows.find((row) => row.repository === this.gallerySelected) ?? null;
+    const note = this.installNote;
     return v_flex()
       .flex_none()
       .gap(6)
@@ -2290,32 +2255,42 @@ export default class Workshop extends View {
       .when(Boolean(this.galleryError), (el) =>
         el.child(div().min_w(0).text_size(11).text_color(t.blocked).child(this.galleryError)),
       )
+      .when(Boolean(note), (el) =>
+        el.child(
+          v_flex()
+            .gap(4)
+            .child(div().min_w(0).text_size(11).text_color(note.error ? t.blocked : t.dim).child(note.text))
+            .when(Boolean(note.keysError), (inner) =>
+              inner.child(div().min_w(0).text_size(11).text_color(t.blocked).child(note.keysError)),
+            )
+            .when(
+              Boolean(note.keys?.offered?.length || note.keys?.conflicts?.length || note.keys?.problems?.length),
+              (inner) => inner.child(this.keyOfferBlock(t, note.keys, `install-${note.repository}`)),
+            ),
+        ),
+      )
       .child(
         h_flex()
           .gap(8)
           .items_center()
           .child(
-            div()
-              .id("workshop-gallery-refresh")
-              .h(24)
-              .px(10)
-              .flex()
-              .items_center()
-              .rounded(6)
-              .border_1()
-              .border_color(t.border)
-              .bg(t.background)
-              .cursor_pointer()
-              .hover((s) => s.bg(t.hover))
-              .text_size(11.5)
-              .text_color(this.refreshing ? t.dim : t.foreground)
-              .on_click((_e, cx) => {
-                if (this.refreshing) return;
+            this.button(t, "workshop-gallery-refresh", this.refreshing ? "Refreshing…" : "Refresh", {
+              disarmed: this.refreshing,
+              on_click: (_e, cx) =>
                 cx.spawn(async (cx) => {
                   await this.refreshGallery(cx);
-                });
-              })
-              .child(this.refreshing ? "Refreshing…" : "Refresh"),
+                }),
+            }),
+          )
+          .child(
+            this.button(t, "workshop-gallery-install", this.installing ? "Installing…" : "Install", {
+              solid: Boolean(selected) && !this.installing,
+              disarmed: !selected || Boolean(this.installing),
+              on_click: (_e, cx) =>
+                cx.spawn(async (cx) => {
+                  await this.install(selected, cx);
+                }),
+            }),
           )
           .child(div().flex_1())
           .child(div().text_size(11).text_color(t.dim).child(cached)),
