@@ -1044,18 +1044,27 @@ export function installFolderName(name, taken = []) {
 
 // Which folder under the repository's mods/ is the mod: the one named after the repository,
 // else the repository's only one. Several with none matching is ambiguous (null).
-export function modFolderOf(repoName, folders = []) {
-  const list = (folders ?? []).filter((folder) => typeof folder === "string" && folder);
-  if (list.includes(repoName)) return repoName;
-  return list.length === 1 ? list[0] : null;
+// Every `mods/<name>/mod.json` the clone carries, wherever it sits: repositories do not
+// all keep their mod folder at the root, and one repository may carry several.
+export function modFoldersOf(paths = []) {
+  const lines = Array.isArray(paths) ? paths : String(paths ?? "").split("\n");
+  const found = new Map();
+  for (const line of lines) {
+    const path = String(line).trim().replace(/^\.\//, "");
+    const match = /^(.*\/)?mods\/([^/]+)\/mod\.json$/.exec(path);
+    if (!match) continue;
+    const dir = `${match[1] ?? ""}mods/${match[2]}`;
+    if (!found.has(dir)) found.set(dir, { name: match[2], dir });
+  }
+  return [...found.values()].sort((a, b) => a.dir.localeCompare(b.dir));
 }
 
 // Why nothing was installed: no mod folder at all, or several and none named after the
 // repository. The clone is kept either way; the text never claims a copy was made.
 export function declinedInstallText(repo, folders = []) {
   const list = (folders ?? []).filter(Boolean);
-  if (!list.length) return `${repo} ships no mod folder under mods/, so nothing was copied.`;
-  return `${repo} ships ${list.length} mod folders (${list.join(", ")}) and none is named after the repository; nothing was copied.`;
+  if (!list.length) return `${repo} ships no mods/<name>/mod.json anywhere, so nothing was copied.`;
+  return `${repo} ships ${list.length} mod folders (${list.join(", ")}); nothing was copied.`;
 }
 
 // What a successful install reports: the mod, the folder it landed in and where it came

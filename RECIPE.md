@@ -173,13 +173,16 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   and the row is written with that commit. Nothing is recorded from a repository name alone —
   without the commit, a file-by-file comparison has no base.
 - **Install** — on a gallery row: shallow `git clone --depth 1` of the default branch into
-  `/tmp/workshop-install-<time>-<repo>`, then the repository's `mods/` folder named after
-  the repository (or its only one) is copied with `cp -R` into `mods/`. A taken name becomes
+  `/tmp/workshop-install-<time>-<repo>`, then the clone is searched for every
+  `*/mods/<name>/mod.json` it carries — repositories keep their mod folders anywhere
+  (`mods/<name>/`, `herdr-app/mods/<name>/`, `herdr/skillsgate/mods/<name>/`), and one
+  repository may carry several. One candidate is copied at once; several are listed in the
+  footer as the clone's own paths, each with its own `Install`, and the dialog waits for the
+  one picked. A chosen folder is copied with `cp -R` into `mods/`; a taken name becomes
   `<name>-copy`, then `<name>-copy-2` and up. The files are hashed, the ledger row written
   with the resolved commit and ref, `herdr-app check <dest>` runs, and the clone is removed.
   Success reads "Installed <name> into mods/<folder> from <repo> @ <short commit>." A
-  repository with no mods folder, or several and none named after it, is declined and its
-  clone kept with the reason.
+  repository with no such folder is declined and its clone kept with the reason.
 - **Key bindings** — after an install, or for a selected third-party entry with a local
   `keys.json` or a recorded repository, the dialog reads that folder's `keys.json` first, or
   else `https://raw.githubusercontent.com/<repo>/<ref>/keys.json`. It splits the bindings
@@ -279,9 +282,10 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   local `keys.json` or a recorded repository. Shipped and cloned entries show no trigger.
 - **No Open action.** Entries with a `place` open from their own dock; an entry with
   `place: "none"` is not opened by this dialog.
-- **Install is repo-shaped**: it needs `mods/<name>/` in the repository and names the mod
-  after the repository, or the repository must ship exactly one mod folder. Anything else is
-  declined with its clone kept.
+- **Install follows the clone, not the repository name**: it takes any `*/mods/<name>/mod.json`
+  the clone carries, so the documented root `mods/<name>/` and a mod buried under
+  `herdr-app/mods/` both install. The folder keeps the mod's own name, not the repository's.
+  A repository with several mods is not guessed at: it is listed and waits for the pick.
 - **Every folder reloads on save**: editing `mod.json` by hand is safe, but the dialog's
   conditional writes are what keep its own settings and ledger writes from clobbering a
   concurrent edit.

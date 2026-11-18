@@ -49,7 +49,7 @@ import {
   checkedText,
   withCheckResults,
   installFolderName,
-  modFolderOf,
+  modFoldersOf,
   declinedInstallText,
   installedText,
   keysFileOf,
@@ -1422,22 +1422,30 @@ test("an install takes the mod folder's own name unless mods/ already has it", (
   assert.equal(installFolderName("better-changes", null), "better-changes");
 });
 
-test("a repository's mod folder is the one named after it, or its only one", () => {
-  assert.equal(modFolderOf("better-changes", ["better-changes"]), "better-changes");
-  assert.equal(modFolderOf("herdr-workshop", ["workshop"]), "workshop");
-  assert.equal(modFolderOf("two", ["one", "two"]), "two");
-  assert.equal(modFolderOf("multi", ["one", "two"]), null);
-  assert.equal(modFolderOf("empty", []), null);
-  assert.equal(modFolderOf("empty", null), null);
+test("the mod folders of a clone are found wherever they sit", () => {
+  const found = modFoldersOf(
+    "./mods/workshop/mod.json\n./herdr-app/mods/herdr-nvim/mod.json\n./herdr/mods/skillsgate/mod.json\n./examples/winprobe-mod/mod.json\n./README.md\n",
+  );
+  assert.deepEqual(found, [
+    { name: "herdr-nvim", dir: "herdr-app/mods/herdr-nvim" },
+    { name: "skillsgate", dir: "herdr/mods/skillsgate" },
+    { name: "workshop", dir: "mods/workshop" },
+  ]);
+  assert.deepEqual(modFoldersOf("./better-changes/mods/better-changes/mod.json"), [
+    { name: "better-changes", dir: "better-changes/mods/better-changes" },
+  ]);
+  assert.deepEqual(modFoldersOf([]), []);
+  assert.deepEqual(modFoldersOf("  \n\n"), []);
+  assert.deepEqual(modFoldersOf(undefined), []);
 });
 
 test("a repository with no mod folder is declined with an explanation", () => {
   const none = declinedInstallText("owner/empty", []);
-  assert.match(none, /ships no mod folder/);
+  assert.match(none, /ships no mods\/<name>\/mod\.json anywhere/);
   assert.match(none, /nothing was copied/i);
   const several = declinedInstallText("owner/multi", ["one", "two"]);
   assert.match(several, /ships 2 mod folders \(one, two\)/);
-  assert.match(several, /none is named after the repository/);
+  assert.match(several, /nothing was copied/);
 });
 
 test("a fresh install records the resolved commit and a hash per file in the ledger", () => {

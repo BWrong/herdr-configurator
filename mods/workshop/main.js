@@ -60,7 +60,7 @@ import {
   errorTextOf,
   refreshedGallery,
   installFolderName,
-  modFolderOf,
+  modFoldersOf,
   declinedInstallText,
   installedText,
   keysOfferOf,
@@ -135,6 +135,7 @@ export default class Workshop extends View {
     this.refreshing = false;
     this.installing = null;
     this.installNote = null;
+    this.installChoice = null;
     this.checkingUpdates = false;
     this.checkNote = "";
     this.forms = {};
@@ -657,62 +658,6 @@ export default class Workshop extends View {
   // mod folder into mods/ under a free name, hash what landed, record the ledger row, then
   // check the folder. Nothing is written before the clone and the copy are in place, and a
   // failure keeps the clone and reports the program's own text.
-  async installFrom(repo) {
-    const clone = await this.cloneIntoTemp(repo);
-    if (clone.error) return { error: `git clone failed: ${clone.error}`, temp: clone.folder };
-    const temp = clone.folder;
-    let folders = [];
-    try {
-      const listing = await exec("/bin/sh", ["-c", 'cd "$1/mods" 2>/dev/null && ls -d */ 2>/dev/null', "sh", temp]);
-      folders = folderNames(listing.stdout);
-    } catch (error) {
-      return { error: `Couldn't list the repository's mod folders: ${error?.message ?? error}`, temp };
-    }
-    const modFolder = modFolderOf(String(repo).split("/")[1], folders);
-    if (!modFolder) return { error: declinedInstallText(repo, folders), temp };
-    let taken = [];
-    try {
-      taken = await this.modsFolderNames();
-    } catch (error) {
-      return { error: `Couldn't list mods/: ${error?.message ?? error}`, temp };
-    }
-    const folder = installFolderName(modFolder, taken);
-    const dest = `${appHome()}/mods/${folder}`;
-    try {
-      await exec("cp", ["-R", `${temp}/mods/${modFolder}`, dest]);
-    } catch (error) {
-      return { error: `Couldn't copy mods/${modFolder}: ${error?.message ?? error}`, temp };
-    }
-    let files = {};
-    try {
-      files = await this.hashFolder(dest);
-    } catch (error) {
-      return { error: `Couldn't hash the installed files: ${error?.message ?? error}`, temp };
-    }
-    const ledgerFailure = await this.writeLedger((entries) =>
-      recordSource(entries, {
-        name: folder,
-        repo,
-        ref: clone.ref || "main",
-        commit: clone.commit,
-        files,
-      }),
-    );
-    if (ledgerFailure) return { error: ledgerFailure, temp };
-    try {
-      await exec("herdr-app", ["check", dest]);
-    } catch (error) {
-      return { error: `herdr-app check failed: ${error?.message ?? error}`, temp };
-    }
-    // The install stands even if the cleanup or the reload stumbles; say so separately.
-    try {
-      await exec("rm", ["-rf", temp]);
-    } catch {}
-    try {
-      await this.load();
-    } catch {}
-    return { installed: { name: folder, folder, repo, ref: clone.ref || "main", commit: clone.commit } };
-  }
 
   // The gallery row's Install action. One at a time, never during a check run, and the row
   // keeps the outcome — success says what landed where, failure the program's own error.
@@ -760,32 +705,135 @@ export default class Workshop extends View {
     if (typeof repo !== "string" || !repo.includes("/")) return;
     this.installing = repo;
     this.installNote = null;
+    this.installChoice = null;
+    cx.notify();
+    const clone = await this.cloneIntoTemp(repo);
+    if (clone.error) {
+      this.installing = null;
+      this.installNote = this.installReport(repo, `git clone failed: ${clone.error}. The clone is kept at ${clone.folder}.`, true);
+      cx.notify();
+      return;
+    }
+    let listing = "";
+    try {
+      listing = String(
+        (
+          await exec("/bin/sh", ["-c", 'cd "$1" && find . -path "*/mods/*/mod.json" -print 2>/dev/null', "sh", clone.folder])
+        ).stdout ?? "",
+      );
+    } catch (error) {
+      this.installing = null;
+      this.installNote = this.installReport(
+        repo,
+        `Couldn't read the clone: ${error?.message ?? error}. The clone is kept at ${clone.folder}.`,
+        true,
+      );
+      cx.notify();
+      return;
+    }
+    const candidates = modFoldersOf(listing);
+    this.installing = null;
+    if (!candidates.length) {
+      this.installNote = this.installReport(repo, `${declinedInstallText(repo, [])} The clone is kept at ${clone.folder}.`, true);
+      cx.notify();
+      return;
+    }
+    if (candidates.length === 1) {
+      await this.installCandidate({ repo, clone }, candidates[0], cx);
+      return;
+    }
+    this.installChoice = { repo, clone, candidates };
+    this.installNote = this.installReport(repo, `${repo} ships ${candidates.length} mods. Pick the one to copy below.`, false);
+    cx.notify();
+  }
+
+  // One report shape for every install outcome, so the footer draws it the same way.
+  installReport(repository, text, error) {
+    return { repository, error: Boolean(error), text, keys: null, keysError: "" };
+  }
+
+  async installCandidate(choice, candidate, cx) {
+    if (checking() || this.installing) return;
+    this.installing = choice.repo;
+    this.installChoice = null;
     cx.notify();
     let result = null;
     try {
-      result = await this.installFrom(repo);
+      result = await this.copyCandidate(choice, candidate);
     } catch (error) {
       result = { error: error?.message ?? String(error) };
     }
     this.installing = null;
-    this.installNote = {
-      repository: repo,
-      error: Boolean(result?.error),
-      text: result?.error
+    this.installNote = this.installReport(
+      choice.repo,
+      result?.error
         ? `${result.error}${result.temp ? ` The clone is kept at ${result.temp}.` : ""}`
         : installedText(result.installed),
-      keys: null,
-      keysError: "",
-    };
+      Boolean(result?.error),
+    );
     if (!result?.error && result?.installed) {
       const gathered = await this.keyBindingsFor(result.installed.folder, {
-        repo,
+        repo: choice.repo,
         ref: result.installed.ref,
       });
       this.installNote.keys = gathered.offer ?? null;
       this.installNote.keysError = gathered.error ?? "";
     }
     cx.notify();
+  }
+
+  async copyCandidate(choice, candidate) {
+    const temp = choice.clone.folder;
+    let taken = [];
+    try {
+      taken = await this.modsFolderNames();
+    } catch (error) {
+      return { error: `Couldn't list mods/: ${error?.message ?? error}`, temp };
+    }
+    const folder = installFolderName(candidate.name, taken);
+    const dest = `${appHome()}/mods/${folder}`;
+    try {
+      await exec("cp", ["-R", `${temp}/${candidate.dir}`, dest]);
+    } catch (error) {
+      return { error: `Couldn't copy ${candidate.dir}: ${error?.message ?? error}`, temp };
+    }
+    let files = {};
+    try {
+      files = await this.hashFolder(dest);
+    } catch (error) {
+      return { error: `Couldn't hash the installed files: ${error?.message ?? error}`, temp };
+    }
+    const ledgerFailure = await this.writeLedger((entries) =>
+      recordSource(entries, {
+        name: folder,
+        repo: choice.repo,
+        ref: choice.clone.ref || "main",
+        commit: choice.clone.commit,
+        files,
+      }),
+    );
+    if (ledgerFailure) return { error: ledgerFailure, temp };
+    try {
+      await exec("herdr-app", ["check", dest]);
+    } catch (error) {
+      return { error: `herdr-app check failed: ${error?.message ?? error}`, temp };
+    }
+    // The install stands even if the cleanup or the reload stumbles; say so separately.
+    try {
+      await exec("rm", ["-rf", temp]);
+    } catch {}
+    try {
+      await this.load();
+    } catch {}
+    return {
+      installed: {
+        name: folder,
+        folder,
+        repo: choice.repo,
+        ref: choice.clone.ref || "main",
+        commit: choice.clone.commit,
+      },
+    };
   }
 
   // The bindings a third-party entry ships: its installed folder's keys.json first, then —
@@ -2240,6 +2288,7 @@ export default class Workshop extends View {
                 .size_full()
                 .on_item_click((key, cx) => {
                   this.gallerySelected = key;
+                  this.installChoice = null;
                   cx.notify();
                   cx.spawn(async (cx) => {
                     await this.readRepoMods(key, cx);
@@ -2336,6 +2385,7 @@ export default class Workshop extends View {
       : "Not fetched yet";
     const selected = rows.find((row) => row.repository === this.gallerySelected) ?? null;
     const note = this.installNote;
+    const choice = this.installChoice;
     return v_flex()
       .flex_none()
       .gap(6)
@@ -2357,6 +2407,33 @@ export default class Workshop extends View {
             .when(
               Boolean(note.keys?.offered?.length || note.keys?.conflicts?.length || note.keys?.problems?.length),
               (inner) => inner.child(this.keyOfferBlock(t, note.keys, `install-${note.repository}`)),
+            ),
+        ),
+      )
+      .when(Boolean(choice), (el) =>
+        el.child(
+          v_flex()
+            .id("workshop-install-choice")
+            .gap(4)
+            .overflow_y_scrollbar()
+            .when(choice.candidates.length > 4, (el) => el.h(160))
+            .children(
+              choice.candidates.map((candidate) =>
+                h_flex()
+                  .gap(8)
+                  .items_center()
+                  .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child(candidate.dir))
+                  .child(
+                    this.button(t, `workshop-install-${candidate.dir}`, "Install", {
+                      solid: true,
+                      disarmed: Boolean(this.installing),
+                      on_click: (_e, cx) =>
+                        cx.spawn(async (cx) => {
+                          await this.installCandidate(choice, candidate, cx);
+                        }),
+                    }),
+                  ),
+              ),
             ),
         ),
       )
@@ -2398,8 +2475,8 @@ export default class Workshop extends View {
           )
           .child(
             this.button(t, "workshop-gallery-install", this.installing ? "Installing…" : "Install", {
-              solid: Boolean(selected) && !this.installing,
-              disarmed: !selected || Boolean(this.installing),
+              solid: Boolean(selected) && !this.installing && !choice,
+              disarmed: !selected || Boolean(this.installing) || Boolean(choice),
               on_click: (_e, cx) =>
                 cx.spawn(async (cx) => {
                   await this.install(selected, cx);
