@@ -17,9 +17,10 @@ the layout's tabs block at it — `"content": { "mod": "workshop" }` — and the
 there; nothing else is drawn.
 
 **The dialog** (`mod.open` with `name: "workshop"`, or the blocks icon). 960 × 680;
-Herdr draws the frame and the shadow; the mod draws a header row and, under it, two columns.
+Herdr draws the frame and the shadow; the mod draws a header row and, under it, two columns: the
+entry list on the left, the selected entry on the right.
 
-**Left column**, 320 px, `surface` background, in the Installed view only:
+**Left column**, 320 px, `surface` background:
 
 - A filter box with 10 px padding, 30 px tall, rounded 7 px, the `background` colour, a
   `border` line, placeholder "Filter entries…", 12.5 px text; beside it, 96 px of the same
@@ -37,32 +38,6 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
 - Under the list, a sticky row with 10 px padding and a 1 px top border: a note at 11 px
   `dim`, and one `Check updates` button 24 px tall, rounded 6 px, 11.5 px, `background`
   colour, `border` line. While it runs it reads "Checking…".
-
-**Gallery view**, the full width of the dialog under the header:
-
-- A search box 14 px in, 30 px tall, the shape of the filter, placeholder
-  "Search repositories…".
-- One row per repository, 72 px tall, 10 px in from either edge, 14 px clear on the right,
-  rounded 6 px, no separators: three lines each, as the gallery page sorts them — the
-  repository name at 13 px (semibold when selected) with `★ n` at 11 px `dim` at the right;
-  the owner's login at 11 px `dim` with "Pushed YYYY-MM-DD" — the date only — at 11 px `dim`
-  at the right; then the description at 11 px `muted` (or "No description.").
-  Clicking a row selects it (`selected` colour); rows themselves carry no button, because a
-  virtual list refuses handlers inside its renderer.
-  The footer holds the responder's error at 11 px `blocked`, the last install report (with any
-  key bindings the repository offers), `Refresh`, `Repository` and `Install` buttons 24 px
-  tall, and "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet"). `Repository` and
-  `Install` are dim until a row is selected: the first opens that repository's GitHub page in
-  the browser, the second installs it and reads "Installing…" while it runs.
-  Selecting a row also reads that repository's tree once (`data/workshop/repos.json`) and
-  names the mod folders it carries — "One mod: workshop", "3 mods: a, b, c", or "No mod folder
-  in this repository." — because the gallery lists repositories while the site lists mods, and
-  a repository may carry several. Until the read answers the line says "Reading this
-  repository…"; a failure shows the responder's own words in `blocked`. One request per
-  repository, remembered afterwards.
-  Empty: "No gallery rows yet. Refresh to fetch them.", "No repository matches." while
-  searching, or "Refreshing…", which becomes "Refreshing… page 2 of 9" once the page count is
-  known (nine pages take about half a minute).
 
 **Right column, top — the detail pane**, as tall as its contents up to 300 px, 14 px
 horizontal and 10 px vertical padding, 7 px gap, 1 px bottom border, `background` colour.
@@ -126,22 +101,11 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   settings drafts are mirrored to `shared.json` (`workshop.drafts`) and re-applied when
   the form is built again, so closing and reopening the dialog keeps them.
 - **Filter** — matches a row's title or folder name, ignoring case and padding; the category
-  keeps only the Origin it names, and the two narrow together. The Gallery's search matches a
-  repository's name or description the same way.
+  keeps only the Origin it names, and the two narrow together.
 - **A hidden selection** — when the filter or the category hide the selected row, the first
   row they leave becomes the selection, so the pane never describes a row nobody can see.
 - **Arrow keys** — `up` and `down` move the selection through the filtered rows and wrap, the
   same as clicking a row; Escape or `✕` closes the dialog.
-- **Installed vs Gallery** — Installed needs no network. Opening Gallery shows the cache at
-  `data/workshop/gallery.json`; with no cache it fetches once by itself, because an empty
-  screen with a button nobody presses is not a gallery. `Refresh` re-fetches.
-- **Refresh** — one GitHub topic search (`q=topic:herdr-mod`, `per_page=100`, every page up
-  to GitHub's 1000-result cap) with `accept: application/vnd.github+json` and a `user-agent`
-  (GitHub answers 403 without one, which is how the empty Gallery was found), then one cache
-  write. Success shows the repositories with stars, description and last push. A page that
-  fails stops the walk but keeps the pages already read, and prints the responder's own
-  `message`, or the request's own error; a failure with nothing read keeps the rows already
-  shown.
 - **Check updates** — one `GET https://api.github.com/repos/{repo}/commits/{ref}` per
   third-party entry whose ledger row records a repository and a ref; nothing else. The one
   ledger write stores `checkedAt` and either `checkedCommit` or `checkedError`. The note
@@ -174,19 +138,8 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   and `rev-parse HEAD` are read, `--abbrev-ref HEAD` names the ref (`main` when it is detached),
   and the row is written with that commit. Nothing is recorded from a repository name alone —
   without the commit, a file-by-file comparison has no base.
-- **Install** — on a gallery row: shallow `git clone --depth 1` of the default branch into
-  `/tmp/workshop-install-<time>-<repo>`, then the clone is searched for every
-  `*/mods/<name>/mod.json` it carries — repositories keep their mod folders anywhere
-  (`mods/<name>/`, `herdr-app/mods/<name>/`, `herdr/skillsgate/mods/<name>/`), and one
-  repository may carry several. One candidate is copied at once; several are listed in the
-  footer as the clone's own paths, each with its own `Install`, and the dialog waits for the
-  one picked. A chosen folder is copied with `cp -R` into `mods/`; a taken name becomes
-  `<name>-copy`, then `<name>-copy-2` and up. The files are hashed, the ledger row written
-  with the resolved commit and ref, `herdr-app check <dest>` runs, and the clone is removed.
-  Success reads "Installed <name> into mods/<folder> from <repo> @ <short commit>." A
-  repository with no such folder is declined and its clone kept with the reason.
-- **Key bindings** — after an install, or for a selected third-party entry with a local
-  `keys.json` or a recorded repository, the dialog reads that folder's `keys.json` first, or
+- **Key bindings** — for a selected third-party entry with a local `keys.json` or a recorded
+  repository, the dialog reads that folder's `keys.json` first, or
   else `https://raw.githubusercontent.com/<repo>/<ref>/keys.json`. It splits the bindings
   against the person's current `keys.json`: non-conflicting ones are shown grouped by section
   ("Offered (nothing bound there yet)") with a `Copy` per line and `Copy all` as a `keys.json`
@@ -222,19 +175,17 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   right-hand group: the Git panel button (drawn only where the layout's `panel-body` stack has a
   `graph` child, so the blocks icon keeps working as the entry point on a `tabs-graph` layout) and the
   blocks icon, which runs `mod.open`.
-- `main.js` (2434 lines): `class Workshop extends View`. `init` reads `props()`, creates
+- `main.js` (1974 lines): `class Workshop extends View`. `init` reads `props()`, creates
   the filter and provenance inputs in the overlay copy, and — unless `checking()` — spawns
   `load()`, which reads every entry's `mod.json` and `mod.schema.json`, the ledger,
-  `installed.json`, every `layouts/*.json` and the gallery cache. `render` branches on
+  `installed.json` and every `layouts/*.json`. `render` branches on
   `props().overlay`. Elements come from `gpui-kit` (`View`, `div`, `svg`) and `gpui-base`
-  (`v_flex`, `h_flex`, `Scrollbar`, `v_virtual_list`, `InputState`, `Input`, `Select`, `Popup`,
-  `Checkbox`).
-- `model.js` (1015 lines): the pure half. No Herdr calls, so `node --test` runs it: folder
+  (`v_flex`, `h_flex`, `InputState`, `Input`, `Select`, `Popup`, `Checkbox`).
+- `model.js` (902 lines): the pure half. No Herdr calls, so `node --test` runs it: folder
   listing → rows, Origin, filter, file sizes, detail and Reference scan text, ledger
   parse/serialize with its version gate, sha256 comparison → update decision, write plan and
-  report, key conflict split, gallery response → rows and pages, cache shape, install
-  folder-name collision, uninstall and trash paths, settings fields/drafts/validation and
-  kept copy. `node --test mods/workshop/*.test.js` runs 128 tests.
+  report, key conflict split, uninstall and trash paths, settings fields/drafts/validation and
+  kept copy. `node --test mods/workshop/*.test.js` runs 114 tests.
 - `mod.schema.json` describes this mod's own `mod.json` only. It declares no `settings`
   property: the Workshop has none of its own. At runtime it reads each entry's
   `mods/<name>/mod.schema.json` for the settings form.
@@ -242,12 +193,11 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   `closeOverlay`, `props`, `shared` / `setShared` (drafts only), `theme`, `layouts()`, `keys()`,
   `notify`; the tab bar adds `spaces()`, `panes()`, `window()`, `layout()`, `settings()`,
   `openOverlay`, `run` (`mod.open` for the blocks icon, plus the tab, panel and window commands).
-- Network: `fetch` to `api.github.com/search/repositories` (the topic), `api.github.com/
-  repos/{repo}/commits/{ref}` (checks, Record provenance), and `raw.githubusercontent.com` (an
-  entry's `keys.json`). Unauthenticated: 60 requests/hour, 10 searches/minute.
-- Programs: `git clone`, `git -C <folder> rev-parse HEAD` / `--abbrev-ref HEAD`, `herdr-app
-  check <folder>`, `shasum -a 256` (via `find | xargs`), and `/bin/sh` for `ls -lR`, `ls -d
-  */`, `mkdir -p`, `mv`, `cp`, `rm -rf`.
+- Network: `fetch` to `api.github.com/repos/{repo}/commits/{ref}` (checks, Record provenance)
+  and `raw.githubusercontent.com` (an entry's `keys.json`). Unauthenticated: 60 requests/hour.
+- Programs: `git -C <folder> rev-parse HEAD` / `--abbrev-ref HEAD`, `git clone --depth 1`
+  (an update's upstream copy), `herdr-app check <folder>`, `shasum -a 256` (via `find |
+  xargs`), and `/bin/sh` for `ls -lR`, `ls -d */`, `mkdir -p`, `mv`, `cp`, `rm -rf`.
 - Icons: one 14 px SVG, `mods/workshop/icons/blocks.svg`, drawn with `svg(...)` so it
   follows the text colour.
 - Art: none. The preview is `herdr-app shot`, cropped to the dialog so nothing behind it is
@@ -276,18 +226,12 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   message rather than retrying.
 - **V1 has no layouts of its own** — `layouts()` is only read to answer the Reference scan.
 - **Sizes**: 960 × 680 is the dialog's size, not a minimum; a narrow window clips the left
-  column first. The installed list has no row cap. The Gallery is a virtual list
-  (`v_virtual_list`, one 52 px row height): 807 repositories cost what the twelve on screen
-  cost (one row is 72 px), and its bar is a paired `Scrollbar.vertical(…).viewport_from_layout()`. The detail
-  pane grows with its contents up to 300 px, so wrapped file chips cannot clip the action row.
+  column first. The installed list has no row cap. The detail pane grows with its contents up
+  to 300 px, so wrapped file chips cannot clip the action row.
 - **`Key bindings` appears only when it has something to read**: a third-party entry with a
   local `keys.json` or a recorded repository. Shipped and cloned entries show no trigger.
 - **No Open action.** Entries with a `place` open from their own dock; an entry with
   `place: "none"` is not opened by this dialog.
-- **Install follows the clone, not the repository name**: it takes any `*/mods/<name>/mod.json`
-  the clone carries, so the documented root `mods/<name>/` and a mod buried under
-  `herdr-app/mods/` both install. The folder keeps the mod's own name, not the repository's.
-  A repository with several mods is not guessed at: it is listed and waits for the pick.
 - **Every folder reloads on save**: editing `mod.json` by hand is safe, but the dialog's
   conditional writes are what keep its own settings and ledger writes from clobbering a
   concurrent edit.
@@ -295,7 +239,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 ## Done when
 
 - `herdr-app check mods/workshop` exits 0, also from a fresh clone with no setup.
-- `node --test mods/workshop/*.test.js` passes (128 tests).
+- `node --test mods/workshop/*.test.js` passes (114 tests).
 - Copying the folder to `~/.config/herdr-app/mods/workshop` shows nothing until the
   layout's tabs block names it (`"content": { "mod": "workshop" }`); then its blocks icon sits
   next to Files / Changes, and clicking it, or `herdr-app do mod.open '{"name":

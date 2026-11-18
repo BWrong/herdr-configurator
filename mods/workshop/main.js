@@ -1,10 +1,10 @@
 // Workshop: the tab bar's blocks icon opens one dialog, and that dialog lists every entry under
-// mods/ with its Origin, or — in its second view — the GitHub topic's installable mods. One
-// folder, two copies: props().overlay is set only in the dialog copy; the docked copy draws
-// the tab bar (tabbar.js).
+// mods/ with its Origin, then lets the person check it against upstream, update it, uninstall
+// it or change its settings. One folder, two copies: props().overlay is set only in the dialog
+// copy; the docked copy draws the tab bar (tabbar.js).
 
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex, Scrollbar, v_virtual_list, InputState, Input, Select, Popup, Checkbox } from "gpui-base";
+import { v_flex, h_flex, InputState, Input, Select, Popup, Checkbox } from "gpui-base";
 import {
   appHome,
   home,
@@ -48,21 +48,7 @@ import {
   checkTargets,
   checkStateOf,
   withCheckResults,
-  galleryRowsOf,
-  galleryFiltered,
-  galleryPagePlan,
-  galleryCacheOf,
-  modsFromTree,
-  reposCacheOf,
-  reposCacheText,
-  modsLineOf,
-  galleryCacheText,
   errorTextOf,
-  refreshedGallery,
-  installFolderName,
-  modFoldersOf,
-  declinedInstallText,
-  installedText,
   keysOfferOf,
   keysFragmentText,
   keyBindingLine,
@@ -83,14 +69,11 @@ import {
 } from "./model.js";
 import Tabs from "./tabbar.js";
 
-const GALLERY_TOPIC_URL = "https://api.github.com/search/repositories?q=topic:herdr-mod&per_page=100&page=";
 
 const ORIGIN_WORDS = { shipped: "shipped", cloned: "cloned", third_party: "third_party" };
 // A row's check state as a dot colour and as the word the detail pane says.
 const CHECK_DOTS = { moved: "accent", current: "border", failed: "ansi1" };
 const CHECK_WORDS = { moved: "upstream moved", current: "up to date", failed: "check failed" };
-// Every gallery row is one fixed height, which is what a virtual list needs (`v_virtual_list`).
-const GALLERY_ROW_HEIGHT = 72;
 
 const parseObject = (text) => {
   try {
@@ -123,20 +106,6 @@ export default class Workshop extends View {
     this.originFilter = "all";
     this.openCategory = false;
     this.loaded = false;
-    this.tab = "installed";
-    this.gallery = { fetchedAt: null, rows: [] };
-    this.galleryProgress = null;
-    this.gallerySelected = null;
-    this.galleryText = "";
-    this.galleryRaw = null;
-    this.repos = {};
-    this.reposRaw = null;
-    this.reposError = null;
-    this.galleryError = null;
-    this.refreshing = false;
-    this.installing = null;
-    this.installNote = null;
-    this.installChoice = null;
     this.checkingUpdates = false;
     this.checkNote = "";
     this.forms = {};
@@ -158,11 +127,6 @@ export default class Workshop extends View {
         cx.notify();
       });
       this.input.focus();
-      this.galleryInput = InputState.new({ placeholder: "Search repositories\u2026" });
-      this.galleryInput.on("change", (_e, cx) => {
-        this.galleryText = this.galleryInput.value();
-        cx.notify();
-      });
       this.sourceRepo = InputState.new({ placeholder: "owner/repo or a GitHub URL" });
       this.sourceRef = InputState.new({ placeholder: "main" });
       this.handle = cx.focus_handle();
@@ -199,10 +163,6 @@ export default class Workshop extends View {
       this.layoutFiles.push({ name, text: await readTextFile(`${appHome()}/layouts/${name}.json`) });
     }
     this.keys = keys();
-    this.galleryRaw = await readTextFile(this.galleryPath());
-    this.gallery = galleryCacheOf(this.galleryRaw);
-    this.reposRaw = await readTextFile(this.reposPath());
-    this.repos = reposCacheOf(this.reposRaw);
     this.buildForms();
     await this.carryLegacy();
     this.loaded = true;
@@ -258,15 +218,7 @@ export default class Workshop extends View {
     if (failure) this.sourceNote = `Ledger: ${failure}`;
   }
 
-  galleryPath() {
-    return `${appHome()}/data/workshop/gallery.json`;
-  }
-
-  reposPath() {
-    return `${appHome()}/data/workshop/repos.json`;
-  }
-
-  // The folder names under mods/, which are the entries and the names an install must avoid.
+  // The folder names under mods/, which are the entries.
   async modsFolderNames() {
     const listing = await exec("/bin/sh", ["-c", 'cd "$1" && ls -d */ 2>/dev/null', "sh", `${appHome()}/mods`]);
     return folderNames(listing.stdout);
@@ -284,96 +236,6 @@ export default class Workshop extends View {
     return files;
   }
 
-  // The repository's default branch, one commit only, into a fresh folder under /tmp. The
-  // folder is returned with the failure too, so a failed install can say where it kept it.
-  async cloneIntoTemp(repo) {
-    const tail = String(repo).split("/")[1]?.replace(/[^A-Za-z0-9_.-]/g, "") || "mod";
-    const folder = `/tmp/workshop-install-${Date.now()}-${tail}`;
-    try {
-      await exec("git", ["clone", "--depth", "1", `https://github.com/${repo}`, folder]);
-      const commit = String((await exec("git", ["-C", folder, "rev-parse", "HEAD"])).stdout ?? "").trim();
-      const ref = String((await exec("git", ["-C", folder, "rev-parse", "--abbrev-ref", "HEAD"])).stdout ?? "").trim();
-      return { folder, commit, ref };
-    } catch (error) {
-      return { folder, error: error?.message ?? String(error) };
-    }
-  }
-
-  // One search page from GitHub, unauthenticated. A failed request carries the responder's
-  // own text, or the error that kept it from answering at all.
-  async fetchGalleryPage(page) {
-    try {
-      const response = await fetch(`${GALLERY_TOPIC_URL}${page}`, {
-        headers: { accept: "application/vnd.github+json", "user-agent": "herdr-workshop" },
-      });
-      const body = await response.text();
-      return response.ok ? { ok: true, body } : { ok: false, error: errorTextOf(body, response.status) };
-    } catch (e) {
-      return { ok: false, error: e?.message ?? String(e) };
-    }
-  }
-
-  // Every page of the topic search in one go, then one cache write. A check never runs
-  // alongside a request or a write; a failure keeps the rows already shown.
-  async refreshGallery(cx) {
-    if (!this.overlay || checking() || this.refreshing) return;
-    this.refreshing = true;
-    this.galleryError = null;
-    this.galleryProgress = null;
-    cx.notify();
-    let attempt = { error: "Request failed" };
-    try {
-      const first = await this.fetchGalleryPage(1);
-      if (!first.ok) attempt = { error: first.error };
-      else {
-        const { totalCount, rows } = galleryRowsOf(first.body);
-        const all = rows.slice();
-        const pages = galleryPagePlan(totalCount);
-        let failure = null;
-        for (const page of pages.filter((number) => number > 1)) {
-          if (checking()) {
-            failure = "herdr-app check is running.";
-            break;
-          }
-          this.galleryProgress = { page, pages: pages.length };
-          cx.notify();
-          const next = await this.fetchGalleryPage(page);
-          if (!next.ok) {
-            failure = next.error;
-            break;
-          }
-          all.push(...galleryRowsOf(next.body).rows);
-        }
-        this.galleryProgress = null;
-        // Nine pages take half a minute; what arrived before a failure is still worth keeping.
-        attempt = failure
-          ? { rows: all, fetchedAt: new Date().toISOString(), error: failure }
-          : { rows: all, fetchedAt: new Date().toISOString() };
-      }
-    } catch (e) {
-      attempt = { error: e?.message ?? String(e) };
-    }
-    const next = refreshedGallery(this.gallery, attempt);
-    this.gallery = { fetchedAt: next.fetchedAt, rows: next.rows };
-    this.galleryError = next.error;
-    if (next.rows.length && !checking()) {
-      const text = galleryCacheText(this.gallery);
-      if (text !== this.galleryRaw) {
-        try {
-          await exec("mkdir", ["-p", `${appHome()}/data/workshop`]);
-          await writeTextFile(this.galleryPath(), text, this.galleryRaw);
-          this.galleryRaw = text;
-        } catch (e) {
-          this.galleryError = `Couldn't save the gallery cache: ${e?.message ?? e}`;
-        }
-      }
-    }
-    this.refreshing = false;
-    cx.notify();
-  }
-
-  // One settings form per entry: the schema's rows and the person's drafts. Drafts outlive
-  // the dialog: they are mirrored into shared.json and re-applied when a form is built again.
   buildForms() {
     const saved = this.savedDrafts();
     for (const entry of this.entries) {
@@ -653,188 +515,6 @@ export default class Workshop extends View {
     }${failed ? `, ${failed} failed: ${firstError?.error ?? "unknown error"}` : ", no failed lookups"}.`;
     this.detail = await this.detailFor(this.selected);
     cx.notify();
-  }
-
-  // Install one gallery repository: clone its default branch to /tmp, copy the repository's
-  // mod folder into mods/ under a free name, hash what landed, record the ledger row, then
-  // check the folder. Nothing is written before the clone and the copy are in place, and a
-  // failure keeps the clone and reports the program's own text.
-
-  // The gallery row's Install action. One at a time, never during a check run, and the row
-  // keeps the outcome — success says what landed where, failure the program's own error.
-  async openRepository(repo) {
-    if (checking() || typeof repo !== "string" || !repo.includes("/")) return;
-    await exec("open", [`https://github.com/${repo}`]);
-  }
-
-  // The mod folders a repository carries, read once and remembered in `repos.json`.
-  async readRepoMods(repo, cx) {
-    if (checking() || typeof repo !== "string" || !repo.includes("/") || this.repos[repo]) return;
-    let mods = null;
-    try {
-      const response = await fetch(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, {
-        headers: { accept: "application/vnd.github+json", "user-agent": "herdr-workshop" },
-      });
-      const body = await response.text();
-      if (response.ok) mods = modsFromTree(body);
-      else this.reposError = `${repo}: ${errorTextOf(body, response.status)}`;
-    } catch (error) {
-      this.reposError = `${repo}: ${error?.message ?? error}`;
-    }
-    if (!mods) {
-      cx.notify();
-      return;
-    }
-    this.repos = { ...this.repos, [repo]: { fetchedAt: new Date().toISOString(), mods } };
-    this.reposError = null;
-    const text = reposCacheText(this.repos);
-    if (text !== this.reposRaw) {
-      try {
-        await exec("mkdir", ["-p", `${appHome()}/data/workshop`]);
-        await writeTextFile(this.reposPath(), text, this.reposRaw);
-        this.reposRaw = text;
-      } catch (error) {
-        this.reposError = `Couldn't save the repository cache: ${error?.message ?? error}`;
-      }
-    }
-    cx.notify();
-  }
-
-  async install(row, cx) {
-    if (checking() || this.installing) return;
-    const repo = row?.repository;
-    if (typeof repo !== "string" || !repo.includes("/")) return;
-    this.installing = repo;
-    this.installNote = null;
-    this.installChoice = null;
-    cx.notify();
-    const clone = await this.cloneIntoTemp(repo);
-    if (clone.error) {
-      this.installing = null;
-      this.installNote = this.installReport(repo, `git clone failed: ${clone.error}. The clone is kept at ${clone.folder}.`, true);
-      cx.notify();
-      return;
-    }
-    let listing = "";
-    try {
-      listing = String(
-        (
-          await exec("/bin/sh", ["-c", 'cd "$1" && find . -path "*/mods/*/mod.json" -print 2>/dev/null', "sh", clone.folder])
-        ).stdout ?? "",
-      );
-    } catch (error) {
-      this.installing = null;
-      this.installNote = this.installReport(
-        repo,
-        `Couldn't read the clone: ${error?.message ?? error}. The clone is kept at ${clone.folder}.`,
-        true,
-      );
-      cx.notify();
-      return;
-    }
-    const candidates = modFoldersOf(listing);
-    this.installing = null;
-    if (!candidates.length) {
-      this.installNote = this.installReport(repo, `${declinedInstallText(repo, [])} The clone is kept at ${clone.folder}.`, true);
-      cx.notify();
-      return;
-    }
-    if (candidates.length === 1) {
-      await this.installCandidate({ repo, clone }, candidates[0], cx);
-      return;
-    }
-    this.installChoice = { repo, clone, candidates };
-    this.installNote = this.installReport(repo, `${repo} ships ${candidates.length} mods. Pick the one to copy below.`, false);
-    cx.notify();
-  }
-
-  // One report shape for every install outcome, so the footer draws it the same way.
-  installReport(repository, text, error) {
-    return { repository, error: Boolean(error), text, keys: null, keysError: "" };
-  }
-
-  async installCandidate(choice, candidate, cx) {
-    if (checking() || this.installing) return;
-    this.installing = choice.repo;
-    this.installChoice = null;
-    cx.notify();
-    let result = null;
-    try {
-      result = await this.copyCandidate(choice, candidate);
-    } catch (error) {
-      result = { error: error?.message ?? String(error) };
-    }
-    this.installing = null;
-    this.installNote = this.installReport(
-      choice.repo,
-      result?.error
-        ? `${result.error}${result.temp ? ` The clone is kept at ${result.temp}.` : ""}`
-        : installedText(result.installed),
-      Boolean(result?.error),
-    );
-    if (!result?.error && result?.installed) {
-      const gathered = await this.keyBindingsFor(result.installed.folder, {
-        repo: choice.repo,
-        ref: result.installed.ref,
-      });
-      this.installNote.keys = gathered.offer ?? null;
-      this.installNote.keysError = gathered.error ?? "";
-    }
-    cx.notify();
-  }
-
-  async copyCandidate(choice, candidate) {
-    const temp = choice.clone.folder;
-    let taken = [];
-    try {
-      taken = await this.modsFolderNames();
-    } catch (error) {
-      return { error: `Couldn't list mods/: ${error?.message ?? error}`, temp };
-    }
-    const folder = installFolderName(candidate.name, taken);
-    const dest = `${appHome()}/mods/${folder}`;
-    try {
-      await exec("cp", ["-R", `${temp}/${candidate.dir}`, dest]);
-    } catch (error) {
-      return { error: `Couldn't copy ${candidate.dir}: ${error?.message ?? error}`, temp };
-    }
-    let files = {};
-    try {
-      files = await this.hashFolder(dest);
-    } catch (error) {
-      return { error: `Couldn't hash the installed files: ${error?.message ?? error}`, temp };
-    }
-    const ledgerFailure = await this.writeLedger((entries) =>
-      recordSource(entries, {
-        name: folder,
-        repo: choice.repo,
-        ref: choice.clone.ref || "main",
-        commit: choice.clone.commit,
-        files,
-      }),
-    );
-    if (ledgerFailure) return { error: ledgerFailure, temp };
-    try {
-      await exec("herdr-app", ["check", dest]);
-    } catch (error) {
-      return { error: `herdr-app check failed: ${error?.message ?? error}`, temp };
-    }
-    // The install stands even if the cleanup or the reload stumbles; say so separately.
-    try {
-      await exec("rm", ["-rf", temp]);
-    } catch {}
-    try {
-      await this.load();
-    } catch {}
-    return {
-      installed: {
-        name: folder,
-        folder,
-        repo: choice.repo,
-        ref: choice.clone.ref || "main",
-        commit: choice.clone.commit,
-      },
-    };
   }
 
   // The bindings a third-party entry ships: its installed folder's keys.json first, then —
@@ -2046,10 +1726,7 @@ export default class Workshop extends View {
   // The two views the left column switches between; the installed entries stay the default.
   // The dialog's title row: what this is, how many entries it found, and the view switch.
   header(t) {
-    const count =
-      this.tab === "installed"
-        ? this.visibleRows().length
-        : galleryFiltered(this.gallery.rows, this.galleryText).length;
+    const count = this.visibleRows().length;
     return h_flex()
       .flex_none()
       .gap(10)
@@ -2066,57 +1743,14 @@ export default class Workshop extends View {
           .flex_none()
           .text_size(11)
           .text_color(t.dim)
-          .child(this.tab === "installed" ? `${count} entries` : `${count} repositories`),
+          .child(`${count} entries`),
       )
       .child(div().flex_1())
-      .child(this.tabs(t))
       .child(
         this.button(t, "workshop-close", "\u2715", {
           on_click: (_e, _cx) => closeOverlay(this.overlay),
         }),
       );
-  }
-
-  // The view switch, a segmented control in the app's own style.
-  tabs(t) {
-    return h_flex()
-      .flex_none()
-      .h(24)
-      .rounded(6)
-      .border_1()
-      .border_color(t.border)
-      .bg(t.background)
-      .overflow_hidden()
-      .child(this.tabButton(t, "installed", "Installed"))
-      .child(this.tabButton(t, "gallery", "Gallery"));
-  }
-
-  // The first look at the Gallery fetches it: an empty screen with a button nobody presses
-  // is not a gallery.
-  showTab(tab, cx) {
-    this.tab = tab;
-    if (tab === "gallery" && !this.gallery.rows.length && !this.refreshing && !this.galleryError) {
-      cx.spawn(async (cx) => {
-        await this.refreshGallery(cx);
-      });
-    }
-    cx.notify();
-  }
-
-  tabButton(t, tab, label) {
-    const on = this.tab === tab;
-    return div()
-      .id(`workshop-tab-${tab}`)
-      .h_full()
-      .px(10)
-      .flex()
-      .items_center()
-      .when(on, (el) => el.bg(t.raised))
-      .when(!on, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
-      .text_size(11.5)
-      .text_color(on ? t.foreground : t.muted)
-      .on_click((_e, cx) => this.showTab(tab, cx))
-      .child(label);
   }
 
   // The filter box, with the category picker beside it: both narrow what the list shows.
@@ -2229,266 +1863,6 @@ export default class Workshop extends View {
 
   }
 
-  // The gallery: one row per repository from the topic, and the Refresh action with the
-  // cache's fetch time under it. Opening this view never fetches; only Refresh does.
-  galleryPane(t) {
-    const rows = galleryFiltered(this.gallery.rows, this.galleryText);
-    return v_flex()
-      .w_full()
-      .flex_1()
-      .h_full()
-      .min_h(0)
-      .child(
-        div().px(14).py(10).flex_none().child(
-          div()
-            .h(30)
-            .px(8)
-            .flex()
-            .items_center()
-            .rounded(7)
-            .border_1()
-            .border_color(t.border)
-            .bg(t.background)
-            .child(Input.new(this.galleryInput).h(28).w_full().text_size(12.5).text_color(t.foreground)),
-        ),
-      )
-      .when(rows.length === 0, (el) =>
-        el.child(
-          div()
-            .px(14)
-            .py(8)
-            .text_size(12)
-            .text_color(t.dim)
-            .child(
-              this.refreshing
-                ? this.galleryProgress
-                  ? `Refreshing… page ${this.galleryProgress.page} of ${this.galleryProgress.pages}`
-                  : "Refreshing…"
-                : this.galleryText
-                  ? "No repository matches."
-                  : "No gallery rows yet. Refresh to fetch them.",
-            ),
-        ),
-      )
-      // A virtual list draws only the rows on screen: 807 repositories cost what 12 do.
-      .when(rows.length > 0, (el) =>
-        el.child(
-          div()
-            .relative()
-            .w_full()
-            .flex_1()
-            .min_h(0)
-            .child(
-              v_virtual_list(
-                "workshop-gallery-list",
-                rows.length,
-                GALLERY_ROW_HEIGHT,
-                (index) => rows[index].repository,
-                (range) => rows.slice(range.start, range.end).map((row) => this.galleryRow(t, row)),
-              )
-                .size_full()
-                .on_item_click((key, cx) => {
-                  this.gallerySelected = key;
-                  this.installChoice = null;
-                  cx.notify();
-                  cx.spawn(async (cx) => {
-                    await this.readRepoMods(key, cx);
-                  });
-                }),
-            )
-            .child(Scrollbar.vertical("workshop-gallery-list").viewport_from_layout().absolute().inset_0()),
-        ),
-      )
-      .child(this.galleryFooter(t, rows));
-  }
-
-  // A virtual list forbids handlers inside its renderer, so a row is plain drawing: the list's
-  // own `on_item_click` names the repository, and the footer installs the one it named.
-  galleryRow(t, row) {
-    const on = row.repository === this.gallerySelected;
-    const [owner, name] = row.repository.split("/");
-    return v_flex()
-      .h(GALLERY_ROW_HEIGHT)
-      .flex_none()
-      .pl(10)
-      .pr(14)
-      .pt(8)
-      .pb(8)
-      .gap(2)
-      .rounded(6)
-      .when(on, (el) => el.bg(t.selected))
-      .child(
-        h_flex()
-          .w_full()
-          .min_w(0)
-          .gap(10)
-          .items_center()
-          .child(
-            div()
-              .flex_1()
-              .min_w(0)
-              .truncate()
-              .text_size(13)
-              .text_color(t.foreground)
-              .when(on, (el) => el.font_semibold())
-              .child(name || row.repository),
-          )
-          .child(
-            div()
-              .flex_none()
-              .text_size(11)
-              .text_color(t.dim)
-              .child(`\u2605 ${row.stars}`),
-          ),
-      )
-      .child(
-        h_flex()
-          .w_full()
-          .min_w(0)
-          .gap(10)
-          .items_center()
-          .child(
-            div()
-              .flex_1()
-              .min_w(0)
-              .truncate()
-              .text_size(11)
-              .text_color(t.dim)
-              .child(owner || row.repository),
-          )
-          .child(
-            div()
-              .flex_none()
-              .text_size(11)
-              .text_color(t.dim)
-              .child(`Pushed ${row.pushedAt.slice(0, 10)}`),
-          ),
-      )
-      .child(
-        h_flex()
-          .w_full()
-          .min_w(0)
-          .child(
-            div()
-              .flex_1()
-              .min_w(0)
-              .truncate()
-              .text_size(11)
-              .text_color(t.muted)
-              .child(row.description || "No description."),
-          ),
-      );
-  }
-
-  galleryFooter(t, rows) {
-    const cached = this.gallery.fetchedAt
-      ? `Cached ${this.gallery.fetchedAt.slice(0, 16).replace("T", " ")}`
-      : "Not fetched yet";
-    const selected = rows.find((row) => row.repository === this.gallerySelected) ?? null;
-    const note = this.installNote;
-    const choice = this.installChoice;
-    return v_flex()
-      .flex_none()
-      .gap(6)
-      .p(10)
-      .border_t(1)
-      .border_color(t.border)
-      .bg(t.surface)
-      .when(Boolean(this.galleryError), (el) =>
-        el.child(div().min_w(0).text_size(11).text_color(t.blocked).child(this.galleryError)),
-      )
-      .when(Boolean(note), (el) =>
-        el.child(
-          v_flex()
-            .gap(4)
-            .child(div().min_w(0).text_size(11).text_color(note.error ? t.blocked : t.dim).child(note.text))
-            .when(Boolean(note.keysError), (inner) =>
-              inner.child(div().min_w(0).text_size(11).text_color(t.blocked).child(note.keysError)),
-            )
-            .when(
-              Boolean(note.keys?.offered?.length || note.keys?.conflicts?.length || note.keys?.problems?.length),
-              (inner) => inner.child(this.keyOfferBlock(t, note.keys, `install-${note.repository}`)),
-            ),
-        ),
-      )
-      .when(Boolean(choice), (el) =>
-        el.child(
-          v_flex()
-            .id("workshop-install-choice")
-            .gap(4)
-            .overflow_y_scrollbar()
-            .when(choice.candidates.length > 4, (el) => el.h(160))
-            .children(
-              choice.candidates.map((candidate) =>
-                h_flex()
-                  .gap(8)
-                  .items_center()
-                  .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child(candidate.dir))
-                  .child(
-                    this.button(t, `workshop-install-${candidate.dir}`, "Install", {
-                      solid: true,
-                      disarmed: Boolean(this.installing),
-                      on_click: (_e, cx) =>
-                        cx.spawn(async (cx) => {
-                          await this.installCandidate(choice, candidate, cx);
-                        }),
-                    }),
-                  ),
-              ),
-            ),
-        ),
-      )
-      .when(Boolean(selected), (el) =>
-        el
-          .child(
-            div()
-              .min_w(0)
-              .truncate()
-              .text_size(11)
-              .text_color(t.muted)
-              .child(modsLineOf(this.repos[selected.repository]?.mods) || "Reading this repository…"),
-          )
-          .when(Boolean(this.reposError), (inner) =>
-            inner.child(div().min_w(0).truncate().text_size(11).text_color(t.blocked).child(this.reposError)),
-          ),
-      )
-      .child(
-        h_flex()
-          .gap(8)
-          .items_center()
-          .child(
-            this.button(t, "workshop-gallery-refresh", this.refreshing ? "Refreshing…" : "Refresh", {
-              disarmed: this.refreshing,
-              on_click: (_e, cx) =>
-                cx.spawn(async (cx) => {
-                  await this.refreshGallery(cx);
-                }),
-            }),
-          )
-          .child(
-            this.button(t, "workshop-gallery-repository", "Repository", {
-              disarmed: !selected,
-              on_click: (_e, cx) =>
-                cx.spawn(async () => {
-                  await this.openRepository(selected.repository);
-                }),
-            }),
-          )
-          .child(
-            this.button(t, "workshop-gallery-install", this.installing ? "Installing…" : "Install", {
-              solid: Boolean(selected) && !this.installing && !choice,
-              disarmed: !selected || Boolean(this.installing) || Boolean(choice),
-              on_click: (_e, cx) =>
-                cx.spawn(async (cx) => {
-                  await this.install(selected, cx);
-                }),
-            }),
-          )
-          .child(div().flex_1())
-          .child(div().text_size(11).text_color(t.dim).child(cached)),
-      );
-  }
-
   // The sticky row under the installed list: the one action that talks to upstream, and
   // what the last run did, failures included. It never runs on its own.
   checkRow(t) {
@@ -2531,7 +1905,7 @@ export default class Workshop extends View {
       );
   }
 
-  // The dialog copy: the view switch, then the default installed list or the gallery.
+  // The dialog copy: the entry list on the left, the selected entry on the right.
   dialog(t) {
     return v_flex()
       .id("workshop-dialog")
@@ -2552,7 +1926,7 @@ export default class Workshop extends View {
           closeOverlay(this.overlay);
           return;
         }
-        if (this.tab !== "installed" || e.key !== "up" && e.key !== "down") return;
+        if (e.key !== "up" && e.key !== "down") return;
         const rows = this.visibleRows();
         if (!rows.length) return;
         cx.stop_propagation();
@@ -2566,31 +1940,27 @@ export default class Workshop extends View {
         h_flex()
           .flex_1()
           .min_h(0)
-          .when(this.tab === "installed", (el) =>
-            el
-              .child(
-                v_flex()
-                  .w(320)
-                  .flex_none()
-                  .h_full()
-                  .min_h(0)
-                  .rounded_bl(10)
-                  .bg(t.surface)
-                  .child(this.filterBox(t))
-                  .child(this.entriesPane(t))
-                  .child(this.checkRow(t)),
-              )
-              .child(
-                v_flex()
-                  .flex_1()
-                  .min_w(0)
-                  .h_full()
-                  .min_h(0)
-                  .child(this.detailPane(t))
-                  .child(this.settingsPane(t)),
-              ),
+          .child(
+            v_flex()
+              .w(320)
+              .flex_none()
+              .h_full()
+              .min_h(0)
+              .rounded_bl(10)
+              .bg(t.surface)
+              .child(this.filterBox(t))
+              .child(this.entriesPane(t))
+              .child(this.checkRow(t)),
           )
-          .when(this.tab === "gallery", (el) => el.child(this.galleryPane(t))),
+          .child(
+            v_flex()
+              .flex_1()
+              .min_w(0)
+              .h_full()
+              .min_h(0)
+              .child(this.detailPane(t))
+              .child(this.settingsPane(t)),
+          ),
       );
   }
 

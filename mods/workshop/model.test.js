@@ -33,26 +33,11 @@ import {
   commitOf,
   recordSource,
   sourceEvidenceOf,
-  pushedText,
-  galleryRowsOf,
-  galleryFiltered,
-  galleryPagePlan,
-  galleryCacheOf,
-  galleryCacheText,
-  modsFromTree,
-  reposCacheOf,
-  reposCacheText,
-  modsLineOf,
   errorTextOf,
-  refreshedGallery,
   checkTargets,
   checkStateOf,
   checkedText,
   withCheckResults,
-  installFolderName,
-  modFoldersOf,
-  declinedInstallText,
-  installedText,
   keysFileOf,
   keysOfferOf,
   keysFragmentText,
@@ -336,74 +321,6 @@ test("sizeText writes byte sizes in B, kB and MB", () => {
   assert.equal(sizeText(1778493), "1.7 MB");
 });
 
-// --- Gallery: one GitHub topic search, paged, cached and refreshed offline-first. ---
-
-const searchPayload = {
-  total_count: 753,
-  incomplete_results: false,
-  items: [
-    {
-      full_name: "BWrong/better-changes",
-      stargazers_count: 812,
-      description: "Review and land changes without leaving the terminal",
-      pushed_at: "2026-11-02T08:31:05Z",
-    },
-    {
-      full_name: "someone/herdr-tabs",
-      stargazers_count: 0,
-      description: null,
-      pushed_at: null,
-    },
-  ],
-};
-
-test("a search response becomes gallery rows with repository, stars, description and last push", () => {
-  const gallery = galleryRowsOf(searchPayload);
-  assert.equal(gallery.totalCount, 753);
-  assert.deepEqual(gallery.rows, [
-    {
-      repository: "BWrong/better-changes",
-      stars: 812,
-      description: "Review and land changes without leaving the terminal",
-      pushedAt: "2026-11-02",
-    },
-    { repository: "someone/herdr-tabs", stars: 0, description: "", pushedAt: "unknown" },
-  ]);
-});
-
-test("gallery rows read a JSON string too, and a body without items yields none", () => {
-  assert.equal(galleryRowsOf(JSON.stringify(searchPayload)).rows.length, 2);
-  assert.deepEqual(galleryRowsOf("not json"), { totalCount: 0, rows: [] });
-  assert.deepEqual(galleryRowsOf({ total_count: 4, items: "nope" }), { totalCount: 4, rows: [] });
-});
-
-test("pushedText keeps the date of a push and says unknown when there is none", () => {
-  assert.equal(pushedText("2026-11-02T08:31:05Z"), "2026-11-02");
-  assert.equal(pushedText(null), "unknown");
-  assert.equal(pushedText("yesterday"), "unknown");
-});
-
-test("the paging plan covers every result, 100 per page, and stops where GitHub stops", () => {
-  assert.deepEqual(galleryPagePlan(0), []);
-  assert.deepEqual(galleryPagePlan(100), [1]);
-  assert.deepEqual(galleryPagePlan(250), [1, 2, 3]);
-  assert.deepEqual(galleryPagePlan(753), [1, 2, 3, 4, 5, 6, 7, 8]);
-  // Search exposes the first 1000 results only; asking beyond it is an error, not a page.
-  assert.deepEqual(galleryPagePlan(5000), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-});
-
-test("the gallery cache keeps its fetch time and rows, and reads back as empty when unusable", () => {
-  const cache = {
-    fetchedAt: "2026-11-16T15:04:00.000Z",
-    rows: [{ repository: "someone/herdr-tabs", stars: 3, description: "Tabs", pushedAt: "2026-10-01" }],
-  };
-  const text = galleryCacheText(cache);
-  assert.deepEqual(galleryCacheOf(text), cache);
-  assert.ok(JSON.parse(text).fetchedAt === "2026-11-16T15:04:00.000Z");
-  assert.deepEqual(galleryCacheOf(null), { fetchedAt: null, rows: [] });
-  assert.deepEqual(galleryCacheOf("{broken"), { fetchedAt: null, rows: [] });
-});
-
 test("errorTextOf shows the responder's own message verbatim, never a guess", () => {
   const rateLimited = '{"message":"API rate limit exceeded for 203.0.113.7.","documentation_url":"https://docs.github.com/rest"}';
   assert.equal(errorTextOf(rateLimited, 403), "API rate limit exceeded for 203.0.113.7.");
@@ -414,35 +331,6 @@ test("errorTextOf shows the responder's own message verbatim, never a guess", ()
   assert.equal(errorTextOf("Bad Gateway", 502), "Bad Gateway");
   assert.equal(errorTextOf("", 500), "HTTP 500");
   assert.equal(errorTextOf(null, 0), "Request failed");
-});
-
-test("a failed refresh keeps the rows it had and carries the failure's text", () => {
-  const cache = {
-    fetchedAt: "2026-11-16T15:04:00.000Z",
-    rows: [{ repository: "someone/herdr-tabs", stars: 3, description: "Tabs", pushedAt: "2026-10-01" }],
-  };
-  const failed = refreshedGallery(cache, { error: "API rate limit exceeded for 203.0.113.7." });
-  assert.deepEqual(failed.rows, cache.rows);
-  assert.equal(failed.fetchedAt, "2026-11-16T15:04:00.000Z");
-  assert.equal(failed.error, "API rate limit exceeded for 203.0.113.7.");
-
-  const fresh = [{ repository: "BWrong/better-changes", stars: 812, description: "Changes", pushedAt: "2026-11-02" }];
-  const succeeded = refreshedGallery(cache, { rows: fresh, fetchedAt: "2026-11-16T16:20:00.000Z" });
-  assert.deepEqual(succeeded.rows, fresh);
-  assert.equal(succeeded.fetchedAt, "2026-11-16T16:20:00.000Z");
-  assert.equal(succeeded.error, null);
-});
-
-test("a refresh that fails on page 5 of 9 keeps the pages it read, and says why", () => {
-  const cache = { fetchedAt: "2026-11-16T15:04:00.000Z", rows: [] };
-  const partial = refreshedGallery(cache, {
-    rows: [{ repository: "BWrong/better-tabs", stars: 12, description: "Tabs", pushedAt: "2026-11-01" }],
-    fetchedAt: "2026-11-16T17:20:00.000Z",
-    error: "fetching page 5 failed",
-  });
-  assert.equal(partial.rows.length, 1);
-  assert.equal(partial.fetchedAt, "2026-11-16T17:20:00.000Z");
-  assert.equal(partial.error, "fetching page 5 failed");
 });
 
 // Settings: the schema's leaves, the drafts, and what a save writes.
@@ -1405,84 +1293,6 @@ test("an update clones into its own temp folder under the Workshop's state", () 
   assert.equal(updateTempPath("x", { now: 1794844800000, temp: "/tmp/here" }), "/tmp/here/update-x-2026-11-16T16-00-00Z");
 });
 
-// --- Installing from the gallery: the folder a fresh install takes, which folder a
-// repository ships, the ledger row it records, and what the result line says.
-
-test("an install takes the mod folder's own name unless mods/ already has it", () => {
-  assert.equal(installFolderName("better-changes", []), "better-changes");
-  assert.equal(installFolderName("better-changes", ["help", "other"]), "better-changes");
-  assert.equal(installFolderName("better-changes", ["better-changes"]), "better-changes-copy");
-  assert.equal(
-    installFolderName("better-changes", ["better-changes", "better-changes-copy"]),
-    "better-changes-copy-2",
-  );
-  assert.equal(
-    installFolderName("better-changes", ["better-changes", "better-changes-copy", "better-changes-copy-2"]),
-    "better-changes-copy-3",
-  );
-  assert.equal(installFolderName("better-changes", null), "better-changes");
-});
-
-test("the mod folders of a clone are found wherever they sit", () => {
-  const found = modFoldersOf(
-    "./mods/workshop/mod.json\n./herdr-app/mods/herdr-nvim/mod.json\n./herdr/mods/skillsgate/mod.json\n./examples/winprobe-mod/mod.json\n./README.md\n",
-  );
-  assert.deepEqual(found, [
-    { name: "herdr-nvim", dir: "herdr-app/mods/herdr-nvim" },
-    { name: "skillsgate", dir: "herdr/mods/skillsgate" },
-    { name: "workshop", dir: "mods/workshop" },
-  ]);
-  assert.deepEqual(modFoldersOf("./better-changes/mods/better-changes/mod.json"), [
-    { name: "better-changes", dir: "better-changes/mods/better-changes" },
-  ]);
-  assert.deepEqual(modFoldersOf([]), []);
-  assert.deepEqual(modFoldersOf("  \n\n"), []);
-  assert.deepEqual(modFoldersOf(undefined), []);
-});
-
-test("a repository with no mod folder is declined with an explanation", () => {
-  const none = declinedInstallText("owner/empty", []);
-  assert.match(none, /ships no mods\/<name>\/mod\.json anywhere/);
-  assert.match(none, /nothing was copied/i);
-  const several = declinedInstallText("owner/multi", ["one", "two"]);
-  assert.match(several, /ships 2 mod folders \(one, two\)/);
-  assert.match(several, /nothing was copied/);
-});
-
-test("a fresh install records the resolved commit and a hash per file in the ledger", () => {
-  const output = `${digest("a")}  ./mod.json\n${digest("b")}  ./main.js\n`;
-  const files = hashesOf(output);
-  const entries = recordSource({}, {
-    name: "better-changes-copy",
-    repo: "BWrong/better-changes",
-    ref: "main",
-    commit: HEX,
-    files,
-    now: 1794000000000,
-  });
-  const row = entries["better-changes-copy"];
-  assert.deepEqual(Object.keys(row), ["repo", "ref", "commit", "files"]);
-  assert.equal(row.repo, "BWrong/better-changes");
-  assert.equal(row.ref, "main");
-  assert.equal(row.commit, HEX);
-  assert.deepEqual(row.files, {
-    "main.js": `sha256:${digest("b")}`,
-    "mod.json": `sha256:${digest("a")}`,
-  });
-});
-
-test("the install result says what landed where, with the short commit", () => {
-  assert.equal(
-    installedText({
-      name: "better-changes",
-      folder: "better-changes-copy",
-      repo: "BWrong/better-changes",
-      commit: HEX,
-    }),
-    "Installed better-changes into mods/better-changes-copy from BWrong/better-changes @ abcdef1.",
-  );
-});
-
 // --- Key bindings a repository ships: parsing its keys.json, the split against the
 // person's current bindings, and the text a copy action hands over.
 
@@ -1637,33 +1447,6 @@ test("the pure half of the flow leaves the person's keys file untouched", () => 
   }
 });
 
-const GALLERY_ROWS = [
-  { repository: "herdrdev/tmux-prefix", stars: 12, description: "tmux style prefix", pushedAt: "2 days ago" },
-  { repository: "munza/herdr-mods", stars: 4, description: "Better config and better files", pushedAt: "5 days ago" },
-  { repository: "BWrong/herdr-workshop", stars: 1, description: "", pushedAt: "today" },
-];
-
-test("the gallery keeps every row when nothing is typed", () => {
-  assert.deepEqual(galleryFiltered(GALLERY_ROWS, ""), GALLERY_ROWS);
-  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "   "), GALLERY_ROWS);
-});
-
-test("the gallery filter matches a repository however it is typed", () => {
-  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "TMUX-PREFIX").map((row) => row.repository), [
-    "herdrdev/tmux-prefix",
-  ]);
-  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "bwrong/herdr").map((row) => row.repository), [
-    "BWrong/herdr-workshop",
-  ]);
-});
-
-test("the gallery filter matches a description too and says so when nothing does", () => {
-  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "better files").map((row) => row.repository), [
-    "munza/herdr-mods",
-  ]);
-  assert.deepEqual(galleryFiltered(GALLERY_ROWS, "nothing here"), []);
-});
-
 test("the category keeps only the Origin it names", () => {
   const rows = [
     { name: "changes", title: "Changes", origin: "shipped" },
@@ -1692,43 +1475,6 @@ test("a checkout's own remote and commit are provenance, and half of it is not",
   assert.equal(sourceEvidenceOf({ remote: "https://gitlab.com/munza/herdr-mods", commit }), null);
   assert.equal(sourceEvidenceOf({}), null);
   assert.equal(sourceEvidenceOf(), null);
-});
-
-test("a repository tree names the mod folders it carries", () => {
-  const tree = {
-    tree: [
-      { path: "mods/workshop/main.js" },
-      { path: "mods/workshop/mod.json" },
-      { path: "mods/better-files/mod.json" },
-      { path: "mods/better-files/model.js" },
-      { path: "RECIPE.md" },
-      { path: "mods/stray/main.js" },
-    ],
-  };
-  assert.deepEqual(modsFromTree(tree), ["better-files", "workshop"]);
-  assert.deepEqual(modsFromTree(JSON.stringify(tree)), ["better-files", "workshop"]);
-  assert.deepEqual(modsFromTree({ tree: [] }), []);
-  assert.deepEqual(modsFromTree("not json"), []);
-  assert.deepEqual(modsFromTree(null), []);
-});
-
-test("the repository cache survives a round trip and drops what it cannot read", () => {
-  const repos = { "BWrong/herdr-workshop": { fetchedAt: "2026-11-18T00:00:00Z", mods: ["workshop"] } };
-  assert.deepEqual(reposCacheOf(reposCacheText(repos)), repos);
-  assert.deepEqual(reposCacheOf("{}"), {});
-  assert.deepEqual(reposCacheOf("not json"), {});
-  assert.deepEqual(reposCacheOf(JSON.stringify({ repos: { x: { mods: [1, "real"] } } })), {
-    x: { fetchedAt: null, mods: ["real"] },
-  });
-});
-
-test("the mods line says how many, and nothing at all before the tree is read", () => {
-  assert.equal(modsLineOf(undefined), "");
-  assert.equal(modsLineOf(null), "");
-  assert.equal(modsLineOf([]), "No mod folder in this repository.");
-  assert.equal(modsLineOf(["workshop"]), "One mod: workshop");
-  assert.equal(modsLineOf(["a", "b"]), "2 mods: a, b");
-  assert.equal(modsLineOf(["a", "b", "c", "d", "e", "f"]), "6 mods: a, b, c, d +2 more");
 });
 
 test("a leftover pane is named after the move, and silence when there is none", () => {
