@@ -29,14 +29,15 @@ entry list on the left, the selected entry on the right.
 
 - A filter box with 10 px padding, 30 px tall, rounded 7 px, the `background` colour, a
   `border` line, placeholder "Filter entries…", 12.5 px text; beside it, 96 px of the same
-  shape, the category: `All`, `shipped`, `cloned` or `third_party` at 11.5 px with a `▾`, and
+  shape, the category: `All`, `Shipped`, `Cloned` or `ThirdParty` at 11.5 px with a `▾`, and
   a 130 px `popover` menu of those four, anchored under it.
 - Under it the list, one row per entry, 44 px tall, 6 px clear of either edge and 14 px
   clear on the right, rounded 6 px, 2 px between rows, and no separators or borders: the
   first line is the title at 13 px, with a 5 × 5 px dot at its right only when the entry has
   a check state (`accent` for upstream moved, `border` for up to date, `ansi1` for check
-  failed); 1 px below it the Origin word at 11 px `dim` (`shipped`, `cloned` or
-  `third_party`; the pane says when no repository is recorded, the row does not).
+  failed); 1 px below it the Origin word at 11 px `dim` (`Shipped`, `Cloned` or `ThirdParty` for
+  the keys `shipped`/`cloned`/`third_party`; the pane says when no repository is recorded, the row
+  does not).
   The selected row is `selected`, its title semibold, and a 2 × 22 px `accent` bar marks its
   left edge; hover is `hover`; its own bar runs always (`overflow_y_scrollbar`). Empty:
   "No entries match." or "Loading…".
@@ -249,7 +250,7 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
   layout's tabs block names it (`"content": { "mod": "workshop" }`); then its blocks icon sits
   next to Files / Changes, and clicking it, or `herdr-app do mod.open '{"name":
   "workshop"}'`, opens the dialog; and `herdr-app shot` shows both.
-- The dialog lists every folder under `mods/` with `shipped` / `cloned` / `third_party` told
+- The dialog lists every folder under `mods/` with `Shipped` / `Cloned` / `ThirdParty` told
   apart, `better-config` among them as third party with unknown origin.
 - `Check updates` on a tracked entry lights its row dot when upstream is ahead and says
   `up to date` when not.

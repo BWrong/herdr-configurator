@@ -14,6 +14,7 @@ _Avoid_: mod, package, item
 Which of three kinds an entry is: `shipped` (Herdr's own, replaced whole on every start),
 `cloned` (a copy made with `mod.clone`, records `cloned_from`, never follows upstream), or
 `third_party` (anything else — yours or someone else's).
+The dialog draws these three as `Shipped`, `Cloned`, `ThirdParty`; the keys stay as written here.
 _Avoid_: source, type
 
 **Provenance**:

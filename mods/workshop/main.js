@@ -70,7 +70,7 @@ import {
 import Tabs from "./tabbar.js";
 
 
-const ORIGIN_WORDS = { shipped: "shipped", cloned: "cloned", third_party: "third_party" };
+const ORIGIN_WORDS = { shipped: "Shipped", cloned: "Cloned", third_party: "ThirdParty" };
 // A row's check state as a dot colour and as the word the detail pane says.
 const CHECK_DOTS = { moved: "accent", current: "border", failed: "ansi1" };
 const CHECK_WORDS = { moved: "upstream moved", current: "up to date", failed: "check failed" };

@@ -36,7 +36,9 @@ test("no drawn string uses a word the glossary bans", () => {
   }
 });
 
-test("the Origin words are the glossary's three, spelled identically", () => {
+const ORIGIN_LABELS = { shipped: "Shipped", cloned: "Cloned", third_party: "ThirdParty" };
+
+test("the Origin words are the glossary's three, capitalised", () => {
   const glossary = source("../../GLOSSARY.md");
   const fixed = [...glossary.matchAll(/`(shipped|cloned|third_party)`/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(fixed)].sort(), ["cloned", "shipped", "third_party"]);
@@ -47,6 +49,6 @@ test("the Origin words are the glossary's three, spelled identically", () => {
   assert.equal(pairs.length, 3);
   for (const pair of pairs) {
     const [key, value] = pair.split(":").map((part) => part.trim().replace(/^"|"$/g, ""));
-    assert.equal(value, key, `ORIGIN_WORDS draws "${value}" for ${key}; the glossary fixes it as ${key}`);
+    assert.equal(value, ORIGIN_LABELS[key], `ORIGIN_WORDS draws "${value}" for ${key}; the dialog draws ${ORIGIN_LABELS[key]}`);
   }
 });

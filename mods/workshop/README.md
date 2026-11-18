@@ -13,8 +13,8 @@ This mod has no settings of its own; it edits the settings of the entries it lis
 
 ## What it does
 
-- **Installed** lists every folder under `mods/` with its Origin (`shipped`, `cloned`, or
-  `third_party`), and a dot once a check has run.
+- **Installed** lists every folder under `mods/` with its Origin (`Shipped`, `Cloned`, or
+  `ThirdParty`), and a dot once a check has run.
   The filter above the list matches a title or a folder name as you type.
 - **Detail** shows the selected entry's title, folder, recorded `repo @ commit`, last check,
   files with sizes, and the Reference scan (which layouts name it and which key bindings
