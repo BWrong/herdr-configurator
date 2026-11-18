@@ -52,6 +52,10 @@ import {
   galleryFiltered,
   galleryPagePlan,
   galleryCacheOf,
+  modsFromTree,
+  reposCacheOf,
+  reposCacheText,
+  modsLineOf,
   galleryCacheText,
   errorTextOf,
   refreshedGallery,
@@ -124,6 +128,9 @@ export default class Workshop extends View {
     this.gallerySelected = null;
     this.galleryText = "";
     this.galleryRaw = null;
+    this.repos = {};
+    this.reposRaw = null;
+    this.reposError = null;
     this.galleryError = null;
     this.refreshing = false;
     this.installing = null;
@@ -192,6 +199,8 @@ export default class Workshop extends View {
     this.keys = keys();
     this.galleryRaw = await readTextFile(this.galleryPath());
     this.gallery = galleryCacheOf(this.galleryRaw);
+    this.reposRaw = await readTextFile(this.reposPath());
+    this.repos = reposCacheOf(this.reposRaw);
     this.buildForms();
     await this.carryLegacy();
     this.loaded = true;
@@ -249,6 +258,10 @@ export default class Workshop extends View {
 
   galleryPath() {
     return `${appHome()}/data/workshop/gallery.json`;
+  }
+
+  reposPath() {
+    return `${appHome()}/data/workshop/repos.json`;
   }
 
   // The folder names under mods/, which are the entries and the names an install must avoid.
@@ -706,6 +719,39 @@ export default class Workshop extends View {
   async openRepository(repo) {
     if (checking() || typeof repo !== "string" || !repo.includes("/")) return;
     await exec("open", [`https://github.com/${repo}`]);
+  }
+
+  // The mod folders a repository carries, read once and remembered in `repos.json`.
+  async readRepoMods(repo, cx) {
+    if (checking() || typeof repo !== "string" || !repo.includes("/") || this.repos[repo]) return;
+    let mods = null;
+    try {
+      const response = await fetch(`https://api.github.com/repos/${repo}/git/trees/HEAD?recursive=1`, {
+        headers: { accept: "application/vnd.github+json", "user-agent": "herdr-workshop" },
+      });
+      const body = await response.text();
+      if (response.ok) mods = modsFromTree(body);
+      else this.reposError = `${repo}: ${errorTextOf(body, response.status)}`;
+    } catch (error) {
+      this.reposError = `${repo}: ${error?.message ?? error}`;
+    }
+    if (!mods) {
+      cx.notify();
+      return;
+    }
+    this.repos = { ...this.repos, [repo]: { fetchedAt: new Date().toISOString(), mods } };
+    this.reposError = null;
+    const text = reposCacheText(this.repos);
+    if (text !== this.reposRaw) {
+      try {
+        await exec("mkdir", ["-p", `${appHome()}/data/workshop`]);
+        await writeTextFile(this.reposPath(), text, this.reposRaw);
+        this.reposRaw = text;
+      } catch (error) {
+        this.reposError = `Couldn't save the repository cache: ${error?.message ?? error}`;
+      }
+    }
+    cx.notify();
   }
 
   async install(row, cx) {
@@ -2195,6 +2241,9 @@ export default class Workshop extends View {
                 .on_item_click((key, cx) => {
                   this.gallerySelected = key;
                   cx.notify();
+                  cx.spawn(async (cx) => {
+                    await this.readRepoMods(key, cx);
+                  });
                 }),
             )
             .child(Scrollbar.vertical("workshop-gallery-list").viewport_from_layout().absolute().inset_0()),
@@ -2310,6 +2359,20 @@ export default class Workshop extends View {
               (inner) => inner.child(this.keyOfferBlock(t, note.keys, `install-${note.repository}`)),
             ),
         ),
+      )
+      .when(Boolean(selected), (el) =>
+        el
+          .child(
+            div()
+              .min_w(0)
+              .truncate()
+              .text_size(11)
+              .text_color(t.muted)
+              .child(modsLineOf(this.repos[selected.repository]?.mods) || "Reading this repository…"),
+          )
+          .when(Boolean(this.reposError), (inner) =>
+            inner.child(div().min_w(0).truncate().text_size(11).text_color(t.blocked).child(this.reposError)),
+          ),
       )
       .child(
         h_flex()

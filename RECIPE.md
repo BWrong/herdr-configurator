@@ -54,6 +54,12 @@ Herdr draws the frame and the shadow; the mod draws a header row and, under it, 
   tall, and "Cached YYYY-MM-DD HH:MM" at 11 px `dim` (or "Not fetched yet"). `Repository` and
   `Install` are dim until a row is selected: the first opens that repository's GitHub page in
   the browser, the second installs it and reads "Installing…" while it runs.
+  Selecting a row also reads that repository's tree once (`data/workshop/repos.json`) and
+  names the mod folders it carries — "One mod: workshop", "3 mods: a, b, c", or "No mod folder
+  in this repository." — because the gallery lists repositories while the site lists mods, and
+  a repository may carry several. Until the read answers the line says "Reading this
+  repository…"; a failure shows the responder's own words in `blocked`. One request per
+  repository, remembered afterwards.
   Empty: "No gallery rows yet. Refresh to fetch them.", "No repository matches." while
   searching, or "Refreshing…", which becomes "Refreshing… page 2 of 9" once the page count is
   known (nine pages take about half a minute).

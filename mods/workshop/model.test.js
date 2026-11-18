@@ -38,6 +38,10 @@ import {
   galleryPagePlan,
   galleryCacheOf,
   galleryCacheText,
+  modsFromTree,
+  reposCacheOf,
+  reposCacheText,
+  modsLineOf,
   errorTextOf,
   refreshedGallery,
   checkTargets,
@@ -1679,4 +1683,41 @@ test("a checkout's own remote and commit are provenance, and half of it is not",
   assert.equal(sourceEvidenceOf({ remote: "https://gitlab.com/munza/herdr-mods", commit }), null);
   assert.equal(sourceEvidenceOf({}), null);
   assert.equal(sourceEvidenceOf(), null);
+});
+
+test("a repository tree names the mod folders it carries", () => {
+  const tree = {
+    tree: [
+      { path: "mods/workshop/main.js" },
+      { path: "mods/workshop/mod.json" },
+      { path: "mods/better-files/mod.json" },
+      { path: "mods/better-files/model.js" },
+      { path: "RECIPE.md" },
+      { path: "mods/stray/main.js" },
+    ],
+  };
+  assert.deepEqual(modsFromTree(tree), ["better-files", "workshop"]);
+  assert.deepEqual(modsFromTree(JSON.stringify(tree)), ["better-files", "workshop"]);
+  assert.deepEqual(modsFromTree({ tree: [] }), []);
+  assert.deepEqual(modsFromTree("not json"), []);
+  assert.deepEqual(modsFromTree(null), []);
+});
+
+test("the repository cache survives a round trip and drops what it cannot read", () => {
+  const repos = { "BWrong/herdr-workshop": { fetchedAt: "2026-11-18T00:00:00Z", mods: ["workshop"] } };
+  assert.deepEqual(reposCacheOf(reposCacheText(repos)), repos);
+  assert.deepEqual(reposCacheOf("{}"), {});
+  assert.deepEqual(reposCacheOf("not json"), {});
+  assert.deepEqual(reposCacheOf(JSON.stringify({ repos: { x: { mods: [1, "real"] } } })), {
+    x: { fetchedAt: null, mods: ["real"] },
+  });
+});
+
+test("the mods line says how many, and nothing at all before the tree is read", () => {
+  assert.equal(modsLineOf(undefined), "");
+  assert.equal(modsLineOf(null), "");
+  assert.equal(modsLineOf([]), "No mod folder in this repository.");
+  assert.equal(modsLineOf(["workshop"]), "One mod: workshop");
+  assert.equal(modsLineOf(["a", "b"]), "2 mods: a, b");
+  assert.equal(modsLineOf(["a", "b", "c", "d", "e", "f"]), "6 mods: a, b, c, d +2 more");
 });

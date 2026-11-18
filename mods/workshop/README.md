@@ -42,6 +42,7 @@ so updating or uninstalling an entry never touches it:
 | `ledger.json` | Provenance per entry: repository, ref, commit, last check, and a `sha256:` hash per file. |
 | `kept/<name>.json` | The entry's version and changed settings values, so an update does not lose them. |
 | `gallery.json` | The last successful gallery fetch: rows and the time they were fetched. |
+| `repos.json` | What each repository's tree was found to carry: its mod folders, read once when a row is selected. |
 | `trash/<UTC time>/<name>/` | Folders moved by an uninstall, and files an update replaced. Recoverable by hand. |
 | `temp/update-<name>-<UTC time>/` | The shallow clone an update compares against; left in place when the run fails. |
 

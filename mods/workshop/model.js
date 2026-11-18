@@ -301,6 +301,57 @@ export function galleryFiltered(rows, text) {
   return rows.filter((row) => `${row.repository} ${row.description}`.toLowerCase().includes(needle));
 }
 
+// The mod folders a repository's tree carries: every `mods/<name>/mod.json` path in it.
+export function modsFromTree(payload) {
+  let value = payload;
+  if (typeof payload === "string") {
+    try {
+      value = JSON.parse(payload);
+    } catch {
+      return [];
+    }
+  }
+  const paths = Array.isArray(value?.tree) ? value.tree.map((node) => String(node?.path ?? "")) : [];
+  const names = new Set();
+  for (const path of paths) {
+    const match = /^mods\/([^/]+)\/mod\.json$/.exec(path);
+    if (match) names.add(match[1]);
+  }
+  return [...names].sort();
+}
+
+// What we already know about the mods inside each repository, keyed by `owner/name`.
+export function reposCacheOf(text) {
+  try {
+    const value = JSON.parse(text);
+    const repos = value?.repos && typeof value.repos === "object" ? value.repos : {};
+    const kept = {};
+    for (const [repo, entry] of Object.entries(repos)) {
+      if (!entry || typeof entry !== "object") continue;
+      const mods = Array.isArray(entry.mods) ? entry.mods.filter((name) => typeof name === "string") : [];
+      kept[repo] = { fetchedAt: typeof entry.fetchedAt === "string" ? entry.fetchedAt : null, mods };
+    }
+    return kept;
+  } catch {
+    return {};
+  }
+}
+
+// The cache file's text, kept as the shape reposCacheOf reads back.
+export function reposCacheText(repos) {
+  return `${JSON.stringify({ version: 1, repos: repos ?? {} }, null, 2)}\n`;
+}
+
+// One line naming the mods a repository carries; empty while its tree has not been read.
+export function modsLineOf(mods) {
+  if (!Array.isArray(mods)) return "";
+  if (mods.length === 0) return "No mod folder in this repository.";
+  if (mods.length === 1) return `One mod: ${mods[0]}`;
+  const shown = mods.slice(0, 4);
+  const rest = mods.length - shown.length;
+  return `${mods.length} mods: ${shown.join(", ")}${rest > 0 ? ` +${rest} more` : ""}`;
+}
+
 // The cache file's text, kept as the shape galleryCacheOf reads back.
 export function galleryCacheText(cache) {
   return `${JSON.stringify({ fetchedAt: cache?.fetchedAt ?? null, rows: cache?.rows ?? [] }, null, 2)}\n`;
