@@ -68,6 +68,7 @@ import {
   keyBindingLine,
   keyConflictText,
   uninstallOf,
+  leftoverTextOf,
   withoutEntry,
   refusalOf,
   trashPath,
@@ -1712,7 +1713,7 @@ export default class Workshop extends View {
           title: "Uninstalled",
           body: outcome.ledgerError
             ? `${plan.name} moved to ${plan.destination}, but ${outcome.ledgerError}`
-            : `${plan.name} moved to ${plan.destination}.`,
+            : `${plan.name} moved to ${plan.destination}.${leftoverTextOf(plan.name, plan.scan.layouts)}`,
           level: outcome.ledgerError ? "warning" : "success",
         });
       }

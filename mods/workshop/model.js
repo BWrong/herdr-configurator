@@ -462,6 +462,12 @@ export function refusalOf(origin) {
 }
 
 // The explanation a cloned entry carries: it is a copy, not a failure.
+export function leftoverTextOf(name, layouts = []) {
+  if (!layouts.length) return "";
+  const files = layouts.map((layout) => `layouts/${layout}.json`).join(", ");
+  return ` ${files} still points at ${name}; Herdr reports "mod ${name}: no mod folder" and shows another layout until that pane goes.`;
+}
+
 export function uninstallNoteOf(origin) {
   return origin === "cloned" ? "This entry is a copy; it never follows upstream." : null;
 }

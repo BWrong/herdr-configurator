@@ -163,7 +163,9 @@ Colours are theme names, never hex: `background`, `surface`, `chrome`, `border`,
 - **Uninstall** — a panel first gives the Reference scan: every `layouts/*.json` naming the
   mod, and every `keys.json` section `mod:<name>`. `Cancel`, or `Move to trash`: the folder
   moves to `data/workshop/trash/<UTC time>/<name>/` and only then is its ledger row
-  dropped. A notification says where it went. Nothing is deleted. A cloned entry also carries
+  dropped. A notification says where it went and, when a layout still names the mod, that
+  `layouts/<name>.json` keeps pointing at it — Herdr then reports `mod <name>: no mod folder`
+  and shows another layout until that pane goes. Nothing is deleted. A cloned entry also carries
   "This entry is a copy; it never follows upstream." A shipped entry cannot be uninstalled.
 - **Record provenance** — for an unknown-origin entry: hash every file, resolve the ref's current
   commit with one `GET /repos/{repo}/commits/{ref}`, and write the ledger row. The note names

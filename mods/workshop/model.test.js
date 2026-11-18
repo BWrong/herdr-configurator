@@ -14,6 +14,7 @@ import {
   layoutsReferencing,
   keyBindingsOf,
   scanText,
+  leftoverTextOf,
   detailOf,
   sizeText,
   settingsFields,
@@ -1728,4 +1729,12 @@ test("the mods line says how many, and nothing at all before the tree is read", 
   assert.equal(modsLineOf(["workshop"]), "One mod: workshop");
   assert.equal(modsLineOf(["a", "b"]), "2 mods: a, b");
   assert.equal(modsLineOf(["a", "b", "c", "d", "e", "f"]), "6 mods: a, b, c, d +2 more");
+});
+
+test("a leftover pane is named after the move, and silence when there is none", () => {
+  assert.equal(leftoverTextOf("agenttrail", []), "");
+  const text = leftoverTextOf("agenttrail", ["main-graph"]);
+  assert.match(text, /layouts\/main-graph\.json still points at agenttrail/);
+  assert.match(text, /no mod folder/);
+  assert.match(leftoverTextOf("x", ["main-graph", "main"]), /layouts\/main-graph\.json, layouts\/main\.json/);
 });
