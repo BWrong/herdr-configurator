@@ -3,8 +3,11 @@
 One dialog for every entry under `~/.config/herdr-app/mods/`: what it is, where it came
 from, whether upstream has moved, and what it is set to. The window's tab bar holds the blocks icon
 that opens it, next to Files / Changes. It replaces `better-config`, and the settings values
-better-config kept are carried over once. A fresh install shows nothing until a layout names
-it: point the tabs block's content at the mod, `"content": { "mod": "workshop" }`.
+better-config kept are carried over once.
+
+**A fresh install shows nothing until a layout names it**: the mod ships `"place": "none"`, so
+point the tabs block's content at it — `"content": { "mod": "workshop" }` — and the blocks icon
+joins the tab bar's right-hand group.
 
 This mod has no settings of its own; it edits the settings of the entries it lists.
 

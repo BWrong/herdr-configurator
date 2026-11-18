@@ -7,6 +7,11 @@ values are carried over once; the old mod is left in place.
 
 ![Workshop](preview.png)
 
+**Installing it does not draw anything yet.** The mod ships `"place": "none"`, so the copied folder
+sits idle until a layout names it: set the tabs block's `"content": { "mod": "workshop" }` (or type
+`workshop` into the layout's tabs slot in Herdr's own controls) and the blocks icon joins the tab
+bar's right-hand group.
+
 ## What you see
 
 **The tab bar button.** The tab bar's blocks icon, in the right-hand group after Files / Changes (and
